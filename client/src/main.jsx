@@ -7,6 +7,7 @@ import { AppProvider } from './context/AppContext.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { BookingProvider } from './context/BookingContext.jsx'
 import { VendorProvider } from './context/VendorContext.jsx'
+import { TransportProvider } from './context/TransportContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -15,7 +16,9 @@ createRoot(document.getElementById('root')).render(
         <AuthProvider>
           <BookingProvider>
             <VendorProvider>
-              <App />
+              <TransportProvider>
+                <App />
+              </TransportProvider>
             </VendorProvider>
           </BookingProvider>
         </AuthProvider>

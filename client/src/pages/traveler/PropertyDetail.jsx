@@ -1,8 +1,13 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
+import { useAuth } from '../../context/useAuth';
+import { useTransport } from '../../context/useTransport';
 import { seatPill } from '../../data/traveler/tours';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';
+import TextField from '../../components/ui/TextField';
+import Stepper from '../../components/ui/Stepper';
 import propLodge from '../../assets/traveler/prop-lodge.jpg';
 import propRoom from '../../assets/traveler/prop-room.jpg';
 
@@ -21,6 +26,28 @@ const HOUSE_RULES = [
 
 export default function PropertyDetail() {
   const { formatMoney } = useApp();
+  const { user } = useAuth();
+  const { createLead } = useTransport();
+  const [enquiring, setEnquiring] = useState(false);
+  const [kind, setKind] = useState('table');
+  const [date, setDate] = useState('');
+  const [guests, setGuests] = useState(2);
+  const [note, setNote] = useState('');
+  const [sentId, setSentId] = useState(null);
+
+  const onSendEnquiry = () => {
+    if (!date) return;
+    const id = createLead({
+      kind,
+      subjectId: null,
+      subjectLabel: kind === 'table' ? 'Dinner table enquiry' : 'Group event enquiry',
+      name: user?.name || 'Traveller',
+      date,
+      count: guests,
+      note,
+    });
+    setSentId(id);
+  };
 
   return (
     <div className="grid items-start gap-4 lg:grid-cols-2">
@@ -93,6 +120,41 @@ export default function PropertyDetail() {
           <Link to="/transport/menu" className="w-fit text-[13px] font-semibold no-underline">
             Full menu
           </Link>
+        </div>
+
+        <div className="flex flex-col gap-2.5 rounded-2xl border border-border bg-surface p-4">
+          <strong className="text-sm">Table or group event</strong>
+          {sentId ? (
+            <div className="flex flex-col items-start gap-1.5">
+              <StatusPill tone="success">Enquiry sent</StatusPill>
+              <p className="text-[13px] leading-relaxed text-fg-muted">
+                No table is held and nothing is charged. The property has 24 hours to reply with a quote.
+              </p>
+            </div>
+          ) : enquiring ? (
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-2">
+                <Button size="sm" variant={kind === 'table' ? 'primary' : 'secondary'} onClick={() => setKind('table')}>Dinner table</Button>
+                <Button size="sm" variant={kind === 'group' ? 'primary' : 'secondary'} onClick={() => setKind('group')}>Group event</Button>
+              </div>
+              <TextField label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <div className="flex flex-col gap-1">
+                <span className="text-[12.5px] font-bold text-fg">Guests</span>
+                <Stepper value={guests} onChange={setGuests} min={1} max={40} srLabel="guest" />
+              </div>
+              <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Occasion, dietary needs, timing…" />
+              <Button onClick={onSendEnquiry} disabled={!date}>Send enquiry</Button>
+            </div>
+          ) : (
+            <>
+              <p className="text-[13px] leading-relaxed text-fg-muted">
+                No table is held, no room is blocked, and no payment is taken — the property replies with a quote.
+              </p>
+              <Button size="sm" variant="secondary" className="self-start" onClick={() => setEnquiring(true)}>
+                Ask about a table or group booking
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>

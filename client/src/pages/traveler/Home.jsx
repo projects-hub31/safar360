@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
 import { useBooking } from '../../context/useBooking';
+import { useTransport } from '../../context/useTransport';
 import { TOURS } from '../../data/traveler/tours';
 import TourCard from '../../components/traveler/TourCard';
 import Button from '../../components/ui/Button';
@@ -28,15 +29,15 @@ const ACTOR_TILES = [
 ];
 
 // Live numbers the same store the booking, payout and stock screens read.
-// `seats` reads BookingContext's real, mutable availability (§3) — the rest
-// are stubbed locally until vendor/transport/social/shop are wired.
-const STUB = { stock: 6, quotes: 2, rooms: 14, referral: 5922, commissionPct: 12, referralPct: 4 };
+// `seats`/`quotes`/`rooms` read real context state (§3) — the rest are
+// stubbed locally until social/shop are wired.
+const STUB = { stock: 6, referral: 5922, commissionPct: 12, referralPct: 4 };
 
-// `hunzaSeats` is the one live figure here (BookingContext's real avail);
-// the rest are stubs until vendor/transport/social/shop are wired — kept as
-// a builder function, not a module-level constant, so the seats stat updates
-// after a real booking instead of freezing at first import.
-function buildRoad(hunzaSeats) {
+// `hunzaSeats`/`openQuotes`/`roomsLive` are the live figures here (real
+// BookingContext/TransportContext state); the rest are stubs until social/
+// shop are wired — kept as a builder function, not a module-level constant,
+// so the stats update after a real mutation instead of freezing at import.
+function buildRoad(hunzaSeats, openQuotes, roomsLive) {
   return [
     {
       name: 'For travellers', km: 'KM 0', img: tourHunza, alt: 'Turquoise Attabad Lake from the Karakoram Highway',
@@ -54,13 +55,13 @@ function buildRoad(hunzaSeats) {
       name: 'For transporters', km: 'KM 312', img: vehJeep, alt: 'A jeep on a high mountain track',
       quote: 'The road is my expertise. Quoting it should not be the hard part.',
       caps: ['Quote per seat or per vehicle', 'Permits tracked with expiry', 'Leads, never surprise bookings'],
-      stat: `${STUB.quotes} quote requests open right now`, cta: 'Open the quote inbox', href: '/transport/quotes',
+      stat: `${openQuotes} quote request${openQuotes === 1 ? '' : 's'} open right now`, cta: 'Open the quote inbox', href: '/transport/quotes',
     },
     {
       name: 'For hotels & restaurants', km: 'KM 465', img: propLodge, alt: 'A stone lodge above a valley',
       quote: 'In season I turn people away. Out of season the rooms sit empty.',
       caps: ['Rooms and rate plans', 'Menus with live availability', 'Enquiries or instant booking'],
-      stat: `${STUB.rooms} rooms live tonight`, cta: 'See the room manager', href: '/discover/property',
+      stat: `${roomsLive} rooms live tonight`, cta: 'See the room manager', href: '/discover/property',
     },
     {
       name: 'For marketplace sellers', km: 'KM 588', img: gearJacket, alt: 'A four-season down jacket',
@@ -88,6 +89,7 @@ export default function Home() {
   const navigate = useNavigate();
   const { formatMoney } = useApp();
   const { avail } = useBooking();
+  const { leads, rooms } = useTransport();
   const [where, setWhere] = useState('');
   const [when, setWhen] = useState('2026-08-14');
   const [guests, setGuests] = useState(2);
@@ -97,7 +99,9 @@ export default function Home() {
   const featured = TOURS.slice(0, 4);
   const trending = TOURS.slice(2, 6);
   const deltas = ['+38%', '+21%', '+17%', '+9%'];
-  const road = buildRoad(avail.hunza ?? 0);
+  const openQuotes = leads.filter((l) => l.kind === 'transport' && l.status === 'request').length;
+  const roomsLive = rooms.reduce((n, r) => n + (r.total - r.booked), 0);
+  const road = buildRoad(avail.hunza ?? 0, openQuotes, roomsLive);
 
   return (
     <div className="flex flex-col gap-8 sm:gap-10">

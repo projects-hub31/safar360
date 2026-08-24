@@ -7,6 +7,7 @@ import TourDetail from './pages/traveler/TourDetail';
 import PropertyDetail from './pages/traveler/PropertyDetail';
 import Wishlist from './pages/traveler/Wishlist';
 import Profile from './pages/traveler/Profile';
+import Transport from './pages/traveler/Transport';
 import RoleSelect from './pages/identity/RoleSelect';
 import Register from './pages/identity/Register';
 import Login from './pages/identity/Login';
@@ -38,6 +39,16 @@ import Payouts from './pages/vendor/Payouts';
 import PayoutDetail from './pages/vendor/PayoutDetail';
 import Gate from './pages/vendor/Gate';
 import Analytics from './pages/vendor/Analytics';
+import Vehicles from './pages/transport/Vehicles';
+import TransportRoutes from './pages/transport/Routes';
+import Quotes from './pages/transport/Quotes';
+import Quote from './pages/transport/Quote';
+import Permits from './pages/transport/Permits';
+import Property from './pages/transport/Property';
+import Rooms from './pages/transport/Rooms';
+import Menu from './pages/transport/Menu';
+import Enquiries from './pages/transport/Enquiries';
+import Featured from './pages/transport/Featured';
 
 const App = () => {
   return (
@@ -50,6 +61,7 @@ const App = () => {
         <Route path="discover/property" element={<PropertyDetail />} />
         <Route path="discover/wishlist" element={<Wishlist />} />
         <Route path="discover/profile" element={<Profile />} />
+        <Route path="discover/transport" element={<Transport />} />
         <Route path="identity/role" element={<RoleSelect />} />
         <Route path="identity/register" element={<Register />} />
         <Route path="identity/login" element={<Login />} />
@@ -86,6 +98,16 @@ const App = () => {
         <Route path="vendor/payout" element={<PayoutDetail />} />
         <Route path="vendor/gate" element={<Gate />} />
         <Route path="vendor/analytics" element={<Analytics />} />
+        <Route path="transport/vehicles" element={<Vehicles />} />
+        <Route path="transport/routes" element={<TransportRoutes />} />
+        <Route path="transport/quotes" element={<Quotes />} />
+        <Route path="transport/quote" element={<Quote />} />
+        <Route path="transport/permits" element={<Permits />} />
+        <Route path="transport/property" element={<Property />} />
+        <Route path="transport/rooms" element={<Rooms />} />
+        <Route path="transport/menu" element={<Menu />} />
+        <Route path="transport/enquiries" element={<Enquiries />} />
+        <Route path="transport/featured" element={<Featured />} />
         <Route path="*" element={<ComingSoon />} />
       </Route>
     </Routes>
