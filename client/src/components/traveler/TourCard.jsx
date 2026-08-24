@@ -1,23 +1,20 @@
 import { Link } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
-import { seatPill, seatsFor } from '../../data/traveler/tours';
+import { useBooking } from '../../context/useBooking';
+import { seatPill } from '../../data/traveler/tours';
+import StatusPill from '../ui/StatusPill';
+import WishlistButton from './WishlistButton';
 
 /**
  * Shared tour tile. `layout="vertical"` is the featured-grid card (image on top);
  * `layout="horizontal"` is the search-results row (image on the side).
  */
 export default function TourCard({ tour, layout = 'vertical' }) {
-  const { formatMoney, wishlist, toggleWishlist } = useApp();
-  const wished = wishlist.includes(tour.id);
-  const seats = seatsFor(tour.id);
+  const { formatMoney } = useApp();
+  const { avail } = useBooking();
+  const seats = avail[tour.id] ?? 0;
   const pill = seatPill(seats);
   const href = `/discover/tour/${tour.id}`;
-
-  const onWish = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    toggleWishlist(tour.id);
-  };
 
   if (layout === 'horizontal') {
     return (
@@ -35,9 +32,9 @@ export default function TourCard({ tour, layout = 'vertical' }) {
         />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3">
           {tour.sponsored && (
-            <span className="inline-flex w-fit items-center gap-1 rounded-md border border-border-loud bg-sunken px-1.5 py-0.5 text-[11px] font-semibold text-fg-muted">
-              ◈ Sponsored · this operator paid for placement
-            </span>
+            <StatusPill tone="neutral" icon="◈" className="w-fit border-border-loud">
+              Sponsored · this operator paid for placement
+            </StatusPill>
           )}
           <div className="flex items-baseline gap-2">
             <span className="flex-1 text-[15.5px] font-bold leading-tight">{tour.title}</span>
@@ -46,14 +43,14 @@ export default function TourCard({ tour, layout = 'vertical' }) {
             </span>
           </div>
           <span className="text-xs leading-relaxed text-fg-muted">{tour.meta}</span>
-          <span className="inline-flex w-fit items-center gap-1 rounded-md border border-success bg-success-soft px-1.5 py-0.5 text-[11px] font-semibold text-success-text">
-            ✓ {tour.operator}
-          </span>
+          <StatusPill tone="success" icon="✓" className="w-fit">
+            {tour.operator}
+          </StatusPill>
           <span className="mt-auto flex flex-wrap items-baseline justify-between gap-2 pt-1.5">
             <span className="font-mono text-base font-semibold sm:text-[17px]">
               {formatMoney(tour.price)} <span className="text-[11.5px] font-normal text-fg-muted">per person</span>
             </span>
-            <span className={pill.className}>{pill.label}</span>
+            <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
           </span>
         </div>
       </Link>
@@ -67,14 +64,7 @@ export default function TourCard({ tour, layout = 'vertical' }) {
     >
       <div className="relative aspect-[4/3] bg-sunken">
         <img src={tour.img} alt={tour.alt} loading="lazy" className="h-full w-full object-cover" />
-        <button
-          type="button"
-          onClick={onWish}
-          aria-label={(wished ? 'Remove from' : 'Save to') + ' wishlist'}
-          className="absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-black/55 text-lg text-white"
-        >
-          <span className={wished ? 'text-amber-400' : 'text-white'}>{wished ? '★' : '☆'}</span>
-        </button>
+        <WishlistButton tourId={tour.id} className="absolute right-2 top-2" />
         {tour.badge && (
           <span className="absolute left-2.5 top-2.5 rounded-md bg-accent px-2 py-1 text-[11px] font-bold text-ink-900">
             {tour.badge}
@@ -88,13 +78,13 @@ export default function TourCard({ tour, layout = 'vertical' }) {
         </div>
         <div className="text-xs leading-relaxed text-fg-muted">{tour.meta}</div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 rounded-md border border-success bg-success-soft px-1.5 py-0.5 text-[11px] font-semibold text-success-text">
-            ✓ {tour.operator}
-          </span>
+          <StatusPill tone="success" icon="✓">
+            {tour.operator}
+          </StatusPill>
         </div>
         <div className="mt-0.5 flex items-baseline justify-between gap-2 border-t border-border pt-2">
           <span className="font-mono text-base font-semibold">{formatMoney(tour.price)}</span>
-          <span className={pill.className}>{pill.label}</span>
+          <StatusPill tone={pill.tone}>{pill.label}</StatusPill>
         </div>
       </div>
     </Link>

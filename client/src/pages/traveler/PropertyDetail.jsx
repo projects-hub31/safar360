@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
 import { seatPill } from '../../data/traveler/tours';
+import Button from '../../components/ui/Button';
+import StatusPill from '../../components/ui/StatusPill';
 import propLodge from '../../assets/traveler/prop-lodge.jpg';
 import propRoom from '../../assets/traveler/prop-room.jpg';
 
@@ -73,18 +75,11 @@ export default function PropertyDetail() {
                 </div>
                 <div className="flex flex-none flex-col items-end gap-1">
                   <span className="font-mono text-[15px] font-semibold">{formatMoney(r.price)}</span>
-                  <span className={pill.className}>{gone ? 'Fully booked' : `${r.left} left`}</span>
+                  <StatusPill tone={pill.tone}>{gone ? 'Fully booked' : `${r.left} left`}</StatusPill>
                 </div>
-                <Link
-                  to="/booking/checkout"
-                  aria-disabled={gone}
-                  onClick={(e) => gone && e.preventDefault()}
-                  className={`flex-none rounded-lg px-3.5 py-2.5 text-[13px] font-bold no-underline ${
-                    gone ? 'pointer-events-none bg-border text-fg-subtle' : 'bg-primary text-primary-on'
-                  }`}
-                >
+                <Button to="/booking/checkout" disabled={gone} size="sm">
                   {gone ? 'Unavailable' : 'Reserve'}
-                </Link>
+                </Button>
               </div>
             );
           })}

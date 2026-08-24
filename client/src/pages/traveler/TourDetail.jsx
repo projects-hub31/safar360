@@ -1,25 +1,46 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
-import { TOURS, TOUR_DETAILS, seatPill, seatsFor } from '../../data/traveler/tours';
+import { useBooking } from '../../context/useBooking';
+import { TOURS, TOUR_DETAILS, seatPill } from '../../data/traveler/tours';
+import Button from '../../components/ui/Button';
+import StatusPill from '../../components/ui/StatusPill';
+import Stepper from '../../components/ui/Stepper';
+import TextField from '../../components/ui/TextField';
+import { CNIC_ERROR, isValidCnic } from '../../utils/validators';
 import tourPassu from '../../assets/traveler/tour-passu.jpg';
 import tourCamp from '../../assets/traveler/tour-camp.jpg';
 
+const CANCEL_COPY = {
+  flexible: 'Free until 24 hours before departure. Nothing after that.',
+  standard: 'Free until 7 days before departure. 50% back until 48 hours before. Nothing after that.',
+  strict: '50% back until 14 days before departure. Nothing after that — permits and jeeps are booked well ahead.',
+};
+
 export default function TourDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { formatMoney } = useApp();
+  const { avail, startLock, createRequest } = useBooking();
   const tour = TOURS.find((t) => t.id === id) || TOURS[0];
   const details = TOUR_DETAILS[tour.id];
 
-  const seatsLeft = seatsFor(tour.id);
+  const seatsLeft = avail[tour.id] ?? 0;
+  // `daysFromNow` is the source of truth for the real departureAt timestamp
+  // used by cancellation refund math (computed in onBook, an event handler —
+  // never here in render, where reading "now" isn't safe). The `date` label
+  // is separate display flavor text and doesn't need to stay calendar-accurate
+  // as real time passes, unlike a refund calculation would.
   const departures = [
-    { date: '14 Aug 2026', note: 'Independence week · guide Wajid', seats: seatsLeft },
-    { date: '28 Aug 2026', note: 'Cooler mornings, apricot harvest', seats: 9 },
-    { date: '11 Sep 2026', note: 'Last departure before the pass closes', seats: 0 },
+    { date: '14 Aug 2026', daysFromNow: 14, note: 'Independence week · guide Wajid', seats: seatsLeft },
+    { date: '28 Aug 2026', daysFromNow: 28, note: 'Cooler mornings, apricot harvest', seats: 9 },
+    { date: '11 Sep 2026', daysFromNow: 45, note: 'Last departure before the pass closes', seats: 0 },
   ];
 
   const [departure, setDeparture] = useState(0);
   const [guests, setGuests] = useState(2);
+  const [requestGuests, setRequestGuests] = useState([{ name: '', cnic: '' }, { name: '', cnic: '' }]);
+  const [requestTouched, setRequestTouched] = useState({});
 
   const chosen = departures[departure];
   const guestCapped = guests >= Math.max(1, chosen.seats);
@@ -32,6 +53,32 @@ export default function TourDetail() {
     if (departures[i].seats <= 0) return;
     setDeparture(i);
     setGuests((g) => Math.min(g, departures[i].seats));
+  };
+
+  const setGuestCount = (n) => {
+    setGuests(n);
+    setRequestGuests((rows) => Array.from({ length: n }, (_, i) => rows[i] || { name: '', cnic: '' }));
+  };
+
+  const updateRequestGuest = (i, field, value) => {
+    setRequestGuests((rows) => rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
+  };
+
+  const requestGuestsValid = requestGuests.every((g) => g.name.trim() && isValidCnic(g.cnic));
+
+  const onBook = () => {
+    if (tour.bookingMode === 'request') {
+      if (!requestGuestsValid) return;
+      createRequest({ tourId: tour.id, title: tour.title, price: tour.price, seats: guests, guests: requestGuests });
+      navigate('/booking/awaiting-accept');
+    } else {
+      startLock({
+        tourId: tour.id, title: tour.title, price: tour.price, seats: guests,
+        departureDays: chosen.daysFromNow,
+        cancellationPolicy: tour.cancellationPolicy,
+      });
+      navigate('/booking/checkout');
+    }
   };
 
   return (
@@ -126,7 +173,7 @@ export default function TourDetail() {
                       <span className="text-[13.5px] font-bold">{d.date}</span>
                       <span className="text-[11.5px] text-fg-muted">{d.note}</span>
                     </span>
-                    <span className={`${pill.className} flex-none`}>{pill.label}</span>
+                    <StatusPill tone={pill.tone} className="flex-none">{pill.label}</StatusPill>
                   </button>
                 );
               })}
@@ -134,24 +181,7 @@ export default function TourDetail() {
 
             <div className="flex flex-col gap-1.5">
               <span className="text-[12.5px] font-bold">Travellers</span>
-              <div className="flex min-h-[48px] items-center gap-1.5 rounded-lg border border-border-strong bg-raised px-1.5">
-                <button
-                  type="button" onClick={() => setGuests((g) => Math.max(1, g - 1))} aria-label="One fewer traveller"
-                  className="h-[38px] w-[38px] flex-none rounded-lg border border-border bg-surface text-lg text-fg"
-                >
-                  −
-                </button>
-                <span aria-live="polite" className="flex-1 text-center font-mono text-base font-semibold tabular-nums">{guests}</span>
-                <button
-                  type="button"
-                  onClick={() => setGuests((g) => Math.min(chosen.seats || 1, g + 1))}
-                  disabled={guestCapped}
-                  aria-label="One more traveller"
-                  className={`h-[38px] w-[38px] flex-none rounded-lg border text-lg ${guestCapped ? 'cursor-not-allowed border-border bg-sunken text-fg-subtle' : 'cursor-pointer border-border bg-surface text-fg'}`}
-                >
-                  +
-                </button>
-              </div>
+              <Stepper value={guests} onChange={setGuestCount} min={1} max={chosen.seats || 1} srLabel="traveller" />
               {guestCapped && (
                 <span className="text-xs leading-relaxed text-danger-text">Only {chosen.seats} seats left on this departure.</span>
               )}
@@ -172,26 +202,58 @@ export default function TourDetail() {
               </div>
             </div>
 
-            <Link
-              to="/booking/checkout"
-              aria-disabled={soldOut}
-              onClick={(e) => soldOut && e.preventDefault()}
-              className={`min-h-[54px] rounded-lg text-center text-[15.5px] font-bold leading-[54px] no-underline ${
-                soldOut ? 'pointer-events-none bg-border text-fg-subtle' : 'bg-primary text-primary-on'
-              }`}
-            >
-              {soldOut ? 'Sold out on this date' : `Hold ${guests} ${guests === 1 ? 'seat' : 'seats'} for 10 minutes`}
-            </Link>
+            {tour.bookingMode === 'request' && !soldOut && (
+              <div className="flex flex-col gap-2 border-t border-border pt-2.5">
+                <span className="text-[12.5px] font-bold">Traveller details</span>
+                {requestGuests.map((g, i) => (
+                  <div key={i} className="grid grid-cols-2 gap-2">
+                    <TextField
+                      aria-label={`Traveller ${i + 1} name`}
+                      placeholder={`Traveller ${i + 1} name`}
+                      value={g.name}
+                      onChange={(e) => updateRequestGuest(i, 'name', e.target.value)}
+                    />
+                    <TextField
+                      aria-label={`Traveller ${i + 1} CNIC`}
+                      dir="ltr"
+                      placeholder="00000-0000000-0"
+                      value={g.cnic}
+                      onChange={(e) => updateRequestGuest(i, 'cnic', e.target.value)}
+                      onBlur={() => setRequestTouched((t) => ({ ...t, [i]: true }))}
+                      error={requestTouched[i] && !isValidCnic(g.cnic) ? CNIC_ERROR : null}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button onClick={onBook} disabled={soldOut || (tour.bookingMode === 'request' && !requestGuestsValid)} size="lg" fullWidth>
+              {soldOut
+                ? 'Sold out on this date'
+                : tour.bookingMode === 'request'
+                  ? `Request ${guests} ${guests === 1 ? 'seat' : 'seats'} — operator has 24h`
+                  : `Hold ${guests} ${guests === 1 ? 'seat' : 'seats'} for 10 minutes`}
+            </Button>
             <p className="text-xs leading-relaxed text-fg-muted">
-              Your seats are held for ten minutes while you pay. You are not charged until the operator confirms.
+              {tour.bookingMode === 'request'
+                ? 'No seats are deducted and you are not charged until the operator accepts.'
+                : 'Your seats are held for ten minutes while you pay. You are not charged until the operator confirms.'}
             </p>
+            {tour.bookingMode !== 'request' && guests >= 2 && !soldOut && (
+              <Link
+                to="/booking/group-split"
+                state={{ tourId: tour.id, title: tour.title, price: tour.price }}
+                className="text-center text-xs font-semibold text-primary-soft-text no-underline"
+              >
+                Split the cost with the group instead
+              </Link>
+            )}
           </div>
 
           <div className="flex flex-col gap-1.5 rounded-2xl border border-border bg-surface p-4">
             <strong className="text-[13.5px]">Cancellation</strong>
             <div className="text-[12.5px] leading-relaxed text-fg-muted">
-              Free until 7 days before departure. 50% back until 48 hours before. Nothing after that — the operator
-              has already paid for permits and jeeps.
+              {CANCEL_COPY[tour.cancellationPolicy] || CANCEL_COPY.standard}
             </div>
           </div>
         </div>

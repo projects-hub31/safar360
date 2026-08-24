@@ -1,0 +1,89 @@
+import { useVendor } from '../../context/useVendor';
+import { useApp } from '../../context/useApp';
+import Card from '../../components/ui/Card';
+
+// Seeded demo series — same honest framing as Dashboard's DEMO_KPIS: this
+// vendor's listings aren't merged into live traveller search in this pass
+// (see VendorContext.jsx), so there's no real multi-month booking history
+// to derive a chart from yet.
+const MONTHS = [
+  { label: 'Mar', bookings: 6 },
+  { label: 'Apr', bookings: 9 },
+  { label: 'May', bookings: 11 },
+  { label: 'Jun', bookings: 8 },
+  { label: 'Jul', bookings: 15 },
+  { label: 'Aug', bookings: 14 },
+];
+
+const SOURCES = [
+  { label: 'Search & discovery', pct: 54 },
+  { label: 'Direct link / repeat traveller', pct: 21 },
+  { label: 'Referral (traveller invite)', pct: 15 },
+  { label: 'Social / influencer post', pct: 10 },
+];
+
+export default function Analytics() {
+  const { ledger } = useVendor();
+  const { formatMoney } = useApp();
+
+  const totalNet = ledger.reduce((n, l) => n + l.net, 0);
+  const acceptedCount = ledger.length;
+  const max = Math.max(...MONTHS.map((m) => m.bookings));
+
+  return (
+    <div className="mx-auto flex max-w-[720px] flex-col gap-4">
+      <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Analytics</h1>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Card className="flex flex-col gap-1 p-4">
+          <span className="font-mono text-2xl font-semibold">{acceptedCount}</span>
+          <span className="text-xs text-fg-muted">Bookings on record</span>
+        </Card>
+        <Card className="flex flex-col gap-1 p-4">
+          <span className="font-mono text-2xl font-semibold">{formatMoney(totalNet)}</span>
+          <span className="text-xs text-fg-muted">Net earned</span>
+        </Card>
+        <Card className="flex flex-col gap-1 p-4">
+          <span className="font-mono text-2xl font-semibold">92%</span>
+          <span className="text-xs text-fg-muted">Acceptance rate</span>
+        </Card>
+      </div>
+
+      <Card className="flex flex-col gap-3 p-4 sm:p-5">
+        <strong className="text-sm">Bookings by month</strong>
+        <div className="flex items-end gap-3" style={{ height: 120 }}>
+          {MONTHS.map((m) => (
+            <div key={m.label} className="flex flex-1 flex-col items-center gap-1.5">
+              <span className="text-xs font-mono text-fg-muted">{m.bookings}</span>
+              <div
+                className="w-full rounded-t-md bg-primary"
+                style={{ height: `${Math.max(6, (m.bookings / max) * 88)}px` }}
+              />
+              <span className="text-xs text-fg-subtle">{m.label}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="flex flex-col gap-2.5 p-4 sm:p-5">
+        <strong className="text-sm">Where bookings come from</strong>
+        {SOURCES.map((s) => (
+          <div key={s.label} className="flex flex-col gap-1">
+            <div className="flex justify-between text-xs text-fg-muted">
+              <span>{s.label}</span>
+              <span className="font-mono">{s.pct}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-muted">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${s.pct}%` }} />
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      <p className="text-xs leading-relaxed text-fg-subtle">
+        No view counts or profile-visit vanity metrics here on purpose — every number above either converts to
+        a booking or explains where a booking came from. A number a vendor can't act on doesn't belong on this page.
+      </p>
+    </div>
+  );
+}

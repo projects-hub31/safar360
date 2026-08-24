@@ -1,14 +1,9 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import Logo from './Logo';
 import { useApp } from '../context/useApp';
-
-const NAV = [
-  { label: 'Discover', to: '/discover/home', match: '/discover' },
-  { label: 'Bookings', to: '/booking/history' },
-  { label: 'Trips', to: '/ai/planner' },
-  { label: 'Feed', to: '/social/feed' },
-  { label: 'Gear', to: '/shop/catalog' },
-];
+import { useAuth } from '../context/useAuth';
+import { ROLES } from '../context/auth-context';
+import Button from './ui/Button';
 
 function navLinkClasses({ isActive }) {
   return [
@@ -21,6 +16,24 @@ function navLinkClasses({ isActive }) {
 
 export default function TravelerLayout() {
   const { theme, toggleTheme, currency, setCurrency } = useApp();
+  const { user, signOut, switchRole } = useAuth();
+  const navigate = useNavigate();
+
+  // Nav is role-aware (§5 per-role default nav) — a signed-out visitor and a
+  // traveller both get the traveller nav, since that's the only role with a
+  // public, no-account surface.
+  const activeRole = ROLES.find((r) => r.id === user?.role) || ROLES[0];
+
+  const onSignOut = () => {
+    signOut();
+    navigate('/discover/home');
+  };
+
+  const onSwitchRole = (roleId) => {
+    switchRole(roleId);
+    const role = ROLES.find((r) => r.id === roleId);
+    navigate(role.nav[0][1]);
+  };
 
   return (
     <div className="min-h-screen bg-bg">
@@ -33,14 +46,14 @@ export default function TravelerLayout() {
 
       <header className="sticky top-0 z-40 border-b border-border bg-surface shadow-sh1">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-3 px-3 py-2.5 sm:gap-5 sm:px-6">
-          <NavLink to="/discover/home" className="flex flex-none items-center gap-2.5 text-fg no-underline">
+          <NavLink to={activeRole.nav[0][1]} className="flex flex-none items-center gap-2.5 text-fg no-underline">
             <Logo />
           </NavLink>
 
           <nav aria-label="Primary" className="flex min-w-0 flex-wrap gap-0.5">
-            {NAV.map((item) => (
-              <NavLink key={item.label} to={item.to} className={navLinkClasses}>
-                {item.label}
+            {activeRole.nav.map(([label, to]) => (
+              <NavLink key={label} to={to} className={navLinkClasses}>
+                {label}
               </NavLink>
             ))}
           </nav>
@@ -67,16 +80,27 @@ export default function TravelerLayout() {
             >
               {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
             </button>
-            <NavLink
-              to="/shop/cart"
-              aria-label="Cart"
-              className="relative inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-border-strong bg-raised px-2.5 text-xs font-semibold text-fg no-underline"
-            >
-              Cart
-              <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-mono text-[11px] font-bold text-primary-on">
-                0
-              </span>
-            </NavLink>
+            {activeRole.id === 'traveller' && (
+              <>
+                <NavLink
+                  to="/shop/cart"
+                  aria-label="Cart"
+                  className="relative inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-border-strong bg-raised px-2.5 text-xs font-semibold text-fg no-underline"
+                >
+                  Cart
+                  <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-mono text-[11px] font-bold text-primary-on">
+                    0
+                  </span>
+                </NavLink>
+                <NavLink
+                  to="/discover/wishlist"
+                  aria-label="Wishlist"
+                  className="inline-flex min-h-[34px] min-w-[34px] items-center justify-center rounded-lg border border-border-strong bg-raised text-sm text-fg no-underline"
+                >
+                  ☆
+                </NavLink>
+              </>
+            )}
             <button
               type="button"
               aria-label="Alerts"
@@ -87,6 +111,38 @@ export default function TravelerLayout() {
                 2
               </span>
             </button>
+            <NavLink
+              to="/discover/profile"
+              aria-label="Preferences"
+              className="inline-flex min-h-[34px] min-w-[34px] items-center justify-center rounded-lg border border-border-strong bg-raised text-xs font-bold text-fg no-underline"
+            >
+              👤
+            </NavLink>
+            {user ? (
+              <div className="flex items-center gap-1.5">
+                <label className="hidden items-center gap-1.5 text-xs text-fg-muted sm:flex">
+                  <span className="font-mono text-[10px] uppercase tracking-wider">Acting as</span>
+                  <select
+                    value={activeRole.id}
+                    onChange={(e) => onSwitchRole(e.target.value)}
+                    aria-label="Switch role"
+                    className="min-h-[34px] cursor-pointer rounded-lg border border-border-strong bg-raised px-2 text-xs font-semibold text-fg"
+                  >
+                    {ROLES.filter((r) => r.id !== 'admin').map((r) => (
+                      <option key={r.id} value={r.id}>{r.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <span className="hidden text-xs font-semibold text-fg-muted sm:inline">Hi, {user.name.split(' ')[0]}</span>
+                <Button variant="secondary" size="sm" onClick={onSignOut}>
+                  Sign out
+                </Button>
+              </div>
+            ) : (
+              <Button to="/identity/login" size="sm">
+                Sign in
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -97,7 +153,7 @@ export default function TravelerLayout() {
 
       <footer className="border-t border-border">
         <div className="mx-auto max-w-[1440px] px-3 py-6 text-xs uppercase tracking-wider text-fg-subtle sm:px-6 font-mono">
-          safar360 · traveller discovery
+          safar360 · one demo account, every actor — switch roles above
         </div>
       </footer>
     </div>

@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
-import { AVAILABILITY, TOURS } from '../../data/traveler/tours';
+import { useBooking } from '../../context/useBooking';
+import { TOURS } from '../../data/traveler/tours';
 import TourCard from '../../components/traveler/TourCard';
+import Button from '../../components/ui/Button';
+import EmptyState from '../../components/ui/EmptyState';
 
 const REGIONS = ['Gilgit-Baltistan', 'Khyber Pakhtunkhwa', 'Balochistan'];
 const DURATIONS = [
@@ -39,6 +42,7 @@ function interleaveSponsored(list) {
 export default function Search() {
   const location = useLocation();
   const { formatMoney } = useApp();
+  const { avail } = useBooking();
 
   const initialWhere = location.state?.where || '';
   const [where] = useState(initialWhere);
@@ -67,7 +71,7 @@ export default function Search() {
     let out = TOURS.filter((t) => t.price <= maxPrice)
       .filter((t) => !regions.length || regions.includes(t.region))
       .filter((t) => !durations.length || durations.some((d) => (d === '1-3' ? t.days <= 3 : d === '4-5' ? t.days >= 4 && t.days <= 5 : t.days >= 6)))
-      .filter((t) => !availOnly || (AVAILABILITY[t.id] ?? 12) > 0)
+      .filter((t) => !availOnly || (avail[t.id] ?? 0) > 0)
       .filter((t) => !where.trim() || `${t.title} ${t.meta} ${t.region}`.toLowerCase().includes(where.trim().toLowerCase()));
 
     if (sort === 'price-asc') out = [...out].sort((a, b) => a.price - b.price);
@@ -77,7 +81,7 @@ export default function Search() {
 
     if (sort !== 'relevance') return out.map((t) => ({ ...t, sponsored: false }));
     return interleaveSponsored(out);
-  }, [maxPrice, regions, durations, availOnly, where, sort]);
+  }, [maxPrice, regions, durations, availOnly, where, sort, avail]);
 
   const filterSummary = [
     regions.length ? `${regions.length} regions` : null,
@@ -95,9 +99,9 @@ export default function Search() {
       <aside aria-label="Filters" className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-4">
         <div className="flex items-baseline justify-between gap-2.5">
           <strong className="text-sm">Filters</strong>
-          <button type="button" onClick={clearFilters} className="min-h-8 p-1 text-xs font-semibold text-primary-soft-text">
+          <Button variant="tertiary" size="sm" onClick={clearFilters} className="min-h-8 px-1">
             Clear all
-          </button>
+          </Button>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -188,16 +192,12 @@ export default function Search() {
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-start gap-3 rounded-2xl border border-border bg-surface p-6 sm:p-10">
-            <div className="font-display text-xl font-semibold tracking-tight sm:text-2xl">No trips match those filters</div>
-            <div className="max-w-[52ch] text-sm leading-relaxed text-fg-muted">
-              Every journey starts somewhere else. Widen the price range or clear the region filter — there are{' '}
-              {TOURS.length} trips waiting.
-            </div>
-            <button type="button" onClick={clearFilters} className="min-h-[48px] rounded-lg bg-primary px-4 text-[14.5px] font-bold text-primary-on">
-              Clear filters
-            </button>
-          </div>
+          <EmptyState
+            title="No trips match those filters"
+            body={`Every journey starts somewhere else. Widen the price range or clear the region filter — there are ${TOURS.length} trips waiting.`}
+            actionLabel="Clear filters"
+            onAction={clearFilters}
+          />
         )}
       </div>
     </div>

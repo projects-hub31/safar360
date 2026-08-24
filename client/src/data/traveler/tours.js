@@ -10,18 +10,39 @@ import tourPassu from '../../assets/traveler/tour-passu.jpg';
 import tourLake from '../../assets/traveler/tour-lake.jpg';
 
 // One tour per row — the same shape the search, home and detail screens all read.
+// `bookingMode` and `cancellationPolicy` live on the listing itself, not as a
+// global constant (CLAUDE.md §3 "Booking mode & cancellation policy — per
+// listing, not global"): `instant` deducts seats on payment confirmation,
+// `request` holds nothing until the operator accepts within 24h; cancellation
+// tiers are `flexible` (full refund to 24h before) / `standard` (100% at 7d,
+// 50% at 48h) / `strict` (50% until 14d, permit-heavy treks).
 export const TOURS = [
-  { id: 'hunza', title: 'Hunza & Attabad Lake — 5 days', img: tourHunza, alt: 'Turquoise Attabad Lake below terraced slopes', region: 'Gilgit-Baltistan', days: 5, price: 56625, rating: 4.9, reviews: 184, operator: 'Karakoram Expeditions', meta: 'Karimabad · Attabad · Passu · 5 days', badge: 'Editor’s pick', sponsored: false },
-  { id: 'skardu', title: 'Skardu, Shangrila & Deosai — 7 days', img: tourSkardu, alt: 'Braided river valley near Skardu', region: 'Gilgit-Baltistan', days: 7, price: 84000, rating: 4.8, reviews: 132, operator: 'Baltistan Trails', meta: 'Skardu · Shangrila · Deosai plains · 7 days', badge: '', sponsored: false },
-  { id: 'fairy', title: 'Fairy Meadows & Nanga Parbat base — 4 days', img: tourFairy, alt: 'Alpine meadow beneath a snow face', region: 'Gilgit-Baltistan', days: 4, price: 48500, rating: 4.7, reviews: 97, operator: 'Raikot Guides', meta: 'Raikot bridge · Tato jeep track · base camp · 4 days', badge: 'Hard trek', sponsored: false },
-  { id: 'kumrat', title: 'Kumrat Valley & Jahaz Banda — 3 days', img: tourKumrat, alt: 'Pine forest along a river in Kumrat', region: 'Khyber Pakhtunkhwa', days: 3, price: 31200, rating: 4.6, reviews: 211, operator: 'Dir Valley Tours', meta: 'Thal · Kumrat forest · Jahaz Banda · 3 days', badge: '', sponsored: true },
-  { id: 'kkh', title: 'Karakoram Highway to Khunjerab — 6 days', img: tourKkh, alt: 'Highway curving between bare mountains', region: 'Gilgit-Baltistan', days: 6, price: 72400, rating: 4.8, reviews: 156, operator: 'Silk Route Motors', meta: 'Gilgit · Sost · Khunjerab Pass 4,693 m · 6 days', badge: '', sponsored: false },
-  { id: 'deosai', title: 'Deosai Plains camping — 3 days', img: tourDeosai, alt: 'Open high plateau under cloud', region: 'Gilgit-Baltistan', days: 3, price: 38900, rating: 4.5, reviews: 74, operator: 'Baltistan Trails', meta: 'Sheosar Lake · Bara Pani · 3 days', badge: '', sponsored: false },
-  { id: 'gwadar', title: 'Gwadar & the Makran coast — 4 days', img: tourGwadar, alt: 'Cliffs above a turquoise coastline', region: 'Balochistan', days: 4, price: 44600, rating: 4.4, reviews: 38, operator: 'Makran Coastal Tours', meta: 'Hingol · Kund Malir · Princess of Hope · 4 days', badge: 'New', sponsored: true },
-  { id: 'kalash', title: 'Kalash valleys, Chitral — 5 days', img: tourKalash, alt: 'Terraced valley village in autumn', region: 'Khyber Pakhtunkhwa', days: 5, price: 59800, rating: 4.7, reviews: 89, operator: 'Chitral Heritage Travel', meta: 'Bumburet · Rumbur · Birir · 5 days', badge: '', sponsored: false },
-  { id: 'passu', title: 'Passu Cones & Borith Lake — 2 days', img: tourPassu, alt: 'Jagged rock spires above a glacier', region: 'Gilgit-Baltistan', days: 2, price: 23400, rating: 4.6, reviews: 143, operator: 'Gojal Adventure Co.', meta: 'Hussaini bridge · Borith · Passu glacier · 2 days', badge: '', sponsored: false },
-  { id: 'lake', title: 'Naltar valley & coloured lakes — 3 days', img: tourLake, alt: 'Still alpine lake ringed by conifers', region: 'Gilgit-Baltistan', days: 3, price: 34500, rating: 4.5, reviews: 66, operator: 'Gojal Adventure Co.', meta: 'Naltar Bala · blue lake · Pakora · 3 days', badge: '', sponsored: false },
+  { id: 'hunza', title: 'Hunza & Attabad Lake — 5 days', img: tourHunza, alt: 'Turquoise Attabad Lake below terraced slopes', region: 'Gilgit-Baltistan', days: 5, price: 56625, rating: 4.9, reviews: 184, operator: 'Karakoram Expeditions', meta: 'Karimabad · Attabad · Passu · 5 days', badge: 'Editor’s pick', sponsored: false, bookingMode: 'instant', cancellationPolicy: 'standard' },
+  { id: 'skardu', title: 'Skardu, Shangrila & Deosai — 7 days', img: tourSkardu, alt: 'Braided river valley near Skardu', region: 'Gilgit-Baltistan', days: 7, price: 84000, rating: 4.8, reviews: 132, operator: 'Baltistan Trails', meta: 'Skardu · Shangrila · Deosai plains · 7 days', badge: '', sponsored: false, bookingMode: 'instant', cancellationPolicy: 'standard' },
+  { id: 'fairy', title: 'Fairy Meadows & Nanga Parbat base — 4 days', img: tourFairy, alt: 'Alpine meadow beneath a snow face', region: 'Gilgit-Baltistan', days: 4, price: 48500, rating: 4.7, reviews: 97, operator: 'Raikot Guides', meta: 'Raikot bridge · Tato jeep track · base camp · 4 days', badge: 'Hard trek', sponsored: false, bookingMode: 'request', cancellationPolicy: 'strict' },
+  { id: 'kumrat', title: 'Kumrat Valley & Jahaz Banda — 3 days', img: tourKumrat, alt: 'Pine forest along a river in Kumrat', region: 'Khyber Pakhtunkhwa', days: 3, price: 31200, rating: 4.6, reviews: 211, operator: 'Dir Valley Tours', meta: 'Thal · Kumrat forest · Jahaz Banda · 3 days', badge: '', sponsored: true, bookingMode: 'instant', cancellationPolicy: 'flexible' },
+  { id: 'kkh', title: 'Karakoram Highway to Khunjerab — 6 days', img: tourKkh, alt: 'Highway curving between bare mountains', region: 'Gilgit-Baltistan', days: 6, price: 72400, rating: 4.8, reviews: 156, operator: 'Silk Route Motors', meta: 'Gilgit · Sost · Khunjerab Pass 4,693 m · 6 days', badge: '', sponsored: false, bookingMode: 'instant', cancellationPolicy: 'standard' },
+  { id: 'deosai', title: 'Deosai Plains camping — 3 days', img: tourDeosai, alt: 'Open high plateau under cloud', region: 'Gilgit-Baltistan', days: 3, price: 38900, rating: 4.5, reviews: 74, operator: 'Baltistan Trails', meta: 'Sheosar Lake · Bara Pani · 3 days', badge: '', sponsored: false, bookingMode: 'instant', cancellationPolicy: 'standard' },
+  { id: 'gwadar', title: 'Gwadar & the Makran coast — 4 days', img: tourGwadar, alt: 'Cliffs above a turquoise coastline', region: 'Balochistan', days: 4, price: 44600, rating: 4.4, reviews: 38, operator: 'Makran Coastal Tours', meta: 'Hingol · Kund Malir · Princess of Hope · 4 days', badge: 'New', sponsored: true, bookingMode: 'instant', cancellationPolicy: 'flexible' },
+  { id: 'kalash', title: 'Kalash valleys, Chitral — 5 days', img: tourKalash, alt: 'Terraced valley village in autumn', region: 'Khyber Pakhtunkhwa', days: 5, price: 59800, rating: 4.7, reviews: 89, operator: 'Chitral Heritage Travel', meta: 'Bumburet · Rumbur · Birir · 5 days', badge: '', sponsored: false, bookingMode: 'instant', cancellationPolicy: 'standard' },
+  { id: 'passu', title: 'Passu Cones & Borith Lake — 2 days', img: tourPassu, alt: 'Jagged rock spires above a glacier', region: 'Gilgit-Baltistan', days: 2, price: 23400, rating: 4.6, reviews: 143, operator: 'Gojal Adventure Co.', meta: 'Hussaini bridge · Borith · Passu glacier · 2 days', badge: '', sponsored: false, bookingMode: 'instant', cancellationPolicy: 'standard' },
+  { id: 'lake', title: 'Naltar valley & coloured lakes — 3 days', img: tourLake, alt: 'Still alpine lake ringed by conifers', region: 'Gilgit-Baltistan', days: 3, price: 34500, rating: 4.5, reviews: 66, operator: 'Gojal Adventure Co.', meta: 'Naltar Bala · blue lake · Pakora · 3 days', badge: '', sponsored: false, bookingMode: 'instant', cancellationPolicy: 'standard' },
 ];
+
+// Refund fraction by policy tier and days-until-departure (§3, §6 tour/cancel).
+// An `operator` cancellation reason always forces 100% regardless of tier —
+// enforced by the caller (BookingContext.cancelBooking), not here.
+export const CANCELLATION_TIERS = {
+  flexible: [{ hours: 24, pct: 100 }],
+  standard: [{ hours: 24 * 7, pct: 100 }, { hours: 48, pct: 50 }],
+  strict: [{ hours: 24 * 14, pct: 50 }],
+};
+
+export function refundPct(policy, hoursUntilDeparture) {
+  const tiers = CANCELLATION_TIERS[policy] || CANCELLATION_TIERS.standard;
+  const hit = tiers.find((t) => hoursUntilDeparture >= t.hours);
+  return hit ? hit.pct : 0;
+}
 
 // Day-by-day content per tour, keyed by id — kept separate from the TOURS
 // rows so search/home cards (which only need the summary fields) stay light.
@@ -130,8 +151,12 @@ export const TOUR_DETAILS = {
   },
 };
 
-// Live seat availability — stands in for the server-truth store the real
-// booking flow will read (see systemDesign: availability is never client state).
+// Seed for the mutable, canonical availability BookingContext owns (§3: "the
+// server is the truth" — availability is never static client state once a
+// booking can actually deduct it). This object itself is only the starting
+// point read once at app boot; every screen that shows or changes seat counts
+// reads BookingContext's live copy via useBooking(), not this export or
+// seatsFor() below, which exist only as the seed / a pre-booking fallback.
 export const AVAILABILITY = {
   hunza: 7, skardu: 12, fairy: 3, kumrat: 12, kkh: 9,
   deosai: 5, gwadar: 12, kalash: 8, passu: 2, lake: 11,
@@ -141,10 +166,11 @@ export function seatsFor(id) {
   return AVAILABILITY[id] ?? 12;
 }
 
-const PILL_BASE = 'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap';
-
+// Seat-pill thresholds from the design spec: sold out / low / plenty.
+// Returns a semantic tone for <StatusPill>, not a baked class string — the
+// data layer names the state, the UI layer decides how it looks.
 export function seatPill(n) {
-  if (n <= 0) return { label: 'Sold out', className: `${PILL_BASE} border-border-loud bg-sunken text-fg-muted` };
-  if (n <= 3) return { label: `${n} seats left`, className: `${PILL_BASE} border-danger bg-danger-soft text-danger-text` };
-  return { label: `${n} seats`, className: `${PILL_BASE} border-success bg-success-soft text-success-text` };
+  if (n <= 0) return { label: 'Sold out', tone: 'neutral' };
+  if (n <= 3) return { label: `${n} seat${n === 1 ? '' : 's'} left`, tone: 'danger' };
+  return { label: `${n} seats`, tone: 'success' };
 }

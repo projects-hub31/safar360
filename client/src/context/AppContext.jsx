@@ -15,6 +15,9 @@ function readStored(key, fallback) {
 export function AppProvider({ children }) {
   const [theme, setTheme] = useState(() => readStored('s360-theme', 'light'));
   const [currency, setCurrency] = useState(() => readStored('s360-currency', 'PKR'));
+  // Preference only for now — screen copy stays English either way until a
+  // translation pass happens (see CLAUDE.md open questions).
+  const [language, setLanguage] = useState(() => readStored('s360-language', 'en'));
   const [wishlist, setWishlist] = useState([]);
 
   useEffect(() => {
@@ -25,6 +28,15 @@ export function AppProvider({ children }) {
   useEffect(() => {
     try { localStorage.setItem('s360-currency', currency); } catch { /* storage unavailable */ }
   }, [currency]);
+
+  useEffect(() => {
+    // Intentionally NOT flipping `dir` here — no screen has RTL-aware layout
+    // yet (logical inset/margin properties, mirrored icons). Doing that now
+    // would silently break every existing screen rather than translate it.
+    // See CLAUDE.md open questions: RTL is a real, separate build task.
+    document.documentElement.setAttribute('lang', language);
+    try { localStorage.setItem('s360-language', language); } catch { /* storage unavailable */ }
+  }, [language]);
 
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
 
@@ -38,6 +50,6 @@ export function AppProvider({ children }) {
     return SYMBOLS[currency] + value.toLocaleString('en-US');
   };
 
-  const value = { theme, toggleTheme, currency, setCurrency, formatMoney, wishlist, toggleWishlist };
+  const value = { theme, toggleTheme, currency, setCurrency, language, setLanguage, formatMoney, wishlist, toggleWishlist };
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
