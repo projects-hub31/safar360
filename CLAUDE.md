@@ -1556,12 +1556,11 @@ Given what's already scaffolded, the natural next slices are:
    confirm (§2: destructive confirms never say "Confirm" alone); zero console errors
    throughout.
    The AI module's remaining screens — `map`, `landmark`, `geofence`, `weather` — are
-   now built too (this closes out the module 08 gap the paragraph above used to list).
-   `escalation` stays folded into the chatbot's inline banner, confirmed still correct
-   on this pass (the "Talk to a person" control is genuinely always on screen, not
-   buried behind a failed answer, and every escalation still renders the scoped
-   `escalateToHuman` tool call with the CNIC/card/other-bookings exclusion list) — not
-   rebuilt into a separate screen, since it already satisfied §3 in full.
+   now built too. `escalation` was assessed on this pass as correctly folded into the
+   chatbot's inline banner and not needing a separate screen — **that assessment was
+   wrong**, corrected below by a later pass that read the actual wireframe source
+   rather than relying on this file's own prior note; see that correction for what
+   `ai/escalation` actually needed and now has.
    `data/ai/landmarks.js` is the hand-curated collection §3 calls for (name, region,
    elevation, blurb, facts, related tours, access notes), seeded from names/elevations
    already real elsewhere in the app (e.g. Khunjerab Pass's "4,693 m" already lived in
@@ -1616,11 +1615,89 @@ Given what's already scaffolded, the natural next slices are:
    visual bug was caught and fixed in this same pass: `Khunjerab Pass`'s map pin sat
    close enough to the canvas's top edge (`coords.y: 8`) that its own marker clipped
    against the card's `overflow-hidden` — moved to `y: 14`.
-   This closes out the last module 08 gap — see the "Build strategy" note at the top of
-   this file: the frontend-first phase across all 9 modules (§5's full route table) is
-   now complete. What's genuinely left is real backend work (§8 item 8, below) plus the
+   At the time this paragraph was written, this looked like it closed out the last
+   module 08 gap and completed the frontend-first phase across all 9 modules — **that
+   turned out to be wrong**, corrected immediately below by a later pass that found two
+   more real gaps (module 07's `social/explore`, module 08's `ai/tracking`) plus the
+   `escalation` mis-assessment above, all missed because this file's own route-table
+   summary (§5) was itself an incomplete transcription of the wireframe, not because
+   anyone re-checked the actual source. See that correction for the real closing state.
+   What's genuinely left after it is real backend work (§8 item 8, below) plus the
    smaller, previously-flagged non-blocking gaps: route guards, and the seeded-vs-live
    Analytics series noted throughout this section.
+
+   **Correction, a later pass**: every "done" claim above was checked against this
+   file's own §5 route table, which was itself never re-verified against the actual
+   wireframe source after being transcribed once, early on. Asked directly to check,
+   this pass decoded `safar360-app.html` (the method §0's header already documents —
+   longest line, gzip+base64 module map, `json.loads()` the template) and enumerated
+   every real `sc-if value="{{ isX }}"` screen flag across all 9 batch docs. Two were
+   genuinely missing and one was wrongly marked complete:
+   - **`social/explore`** (module 07) existed only as a Feed *tab* that re-filtered the
+     same list in place — no search, no hashtags. The wireframe's `isExplore` is a
+     separate, richer screen (search input, live hashtag chips with counts, a 1:1-grid
+     with like/comment overlays). Built as `pages/social/Explore.jsx`; Feed's own
+     Followed/Explore tabs stay as they are (that part was correctly built — `isFeed`
+     genuinely has its own `feedTabs` sub-nav, a smaller, real, separate feature from
+     `isExplore`) but now carry an "Open full Explore →" link. `PostCard.jsx`'s hashtag
+     spans became real `Link`s to `/social/explore` with `state: { tag }`, matching the
+     wireframe's own tap-a-tag-to-filter behavior — `Explore.jsx` reads
+     `location.state?.tag` to seed its initial filter, the same `useLocation().state`
+     convention `Search.jsx` already established rather than a query-string mechanism.
+   - **`ai/tracking`** (module 08) didn't exist at all — genuinely missing, not merely
+     under-built, and not the same concept as `shop/tracking` (gear-parcel courier
+     tracking, unrelated). The wireframe's `isTracking` is a live in-trip location
+     screen: a pulsing "Live · Hunza & Attabad, day 3" header, a 4-stat grid, a
+     "Today's route" leg list, a "Who can see this" sharing-toggle list, and an honest
+     signal-loss note. Built as `pages/ai/Tracking.jsx` at `ai/tracking/:ref?`. It had
+     nothing honest to visualize against `BookingContext`'s only seeded booking
+     (`SFR-2026-0814-5521`, upcoming, not yet departed), so a second seeded booking was
+     added — `SFR-2026-0801-2210`, Hunza & Attabad Lake, `departureAt` fixed 2 days in
+     the past against a 5-day tour (putting "today" on day 3, matching the wireframe's
+     own literal example), matching `VendorContext.SEED_LEDGER`'s still-untouched
+     `LG-4001` row. The route's "signal drops past Hussaini bridge" leg is a real,
+     deterministic data flag (`dot: 'signal-lost'` in `TRACK_LEGS`) the honest copy is
+     keyed off, not decorative text always shown — and Hussaini bridge is the same
+     crossing `data/ai/landmarks.js`'s `hunza-attabad` entry already describes, not
+     invented fresh. `History.jsx` gained a "Track live" link, shown only for this one
+     genuinely trackable booking rather than implying a general in-progress capability
+     the route data doesn't actually back.
+   - **`ai/escalation`** (module 08) — a prior pass in this same item explicitly
+     assessed the chatbot's inline "Escalated" banner as already satisfying §3 and
+     declined to build a separate screen. Wrong: the wireframe's `isEscalation` is a
+     real dedicated hand-off screen (an agent identity card with a live wait clock, a
+     "what the agent can already see" scoped-context block, and two exit actions) that
+     the chatbot's own persistent header control (`"Talk to a person"`, next to the
+     assistant's name — confirmed genuinely always-rendered, never conditional) links
+     to. Built as `pages/ai/Escalation.jsx`. Rather than a second hand-rolled copy of
+     the scoping logic, `ai-context.js` gained `buildScopedContext(bookings, reason)`
+     and `EXCLUDED_FROM_AGENT` (a 4-item list — `saved cards` was missing from the
+     original 3-item version, caught while centralizing) — `sendChatMessage`,
+     `escalateNow`, and the new screen all now read the one function/constant, so the
+     inline chat tool-call block and the dedicated screen can never drift. The screen
+     reads its content from the most recent escalated message in `AiContext.messages`
+     (clicking any inline "Escalated" pill also jumps here now) rather than
+     recomputing anything. Its "Open the conversation" action needed a real judgment
+     call: the wireframe links to `#/social/thread`, implying a human-agent chat, but
+     no such backend exists. Fabricating a scripted back-and-forth would be dishonest;
+     silently dropping the link would under-deliver the directive. Landed on reusing
+     the app's one real messaging system — `SocialContext.startThread` gained an
+     optional `seedFromThem` param (only applied the first time a thread is created)
+     and `AUTHORS` gained a `support` entry (`Nida · safar360 support`) — so the link
+     opens a genuinely functional thread (real Sending→Sent→Delivered states, verified
+     by actually sending a message through it) seeded with one honest acknowledgment
+     line, never a fake ongoing conversation pretending a human is typing replies.
+   All three verified in-browser end to end (Chrome extension available): a Feed tag
+   tap landing on a correctly pre-filtered Explore; Tracking's toggle state and live
+   "updated Ns ago" tick both genuinely working (watched it advance a full minute);
+   Escalation reached via the chatbot's persistent control, its scoped-context block
+   cross-checked against zero drift, and its conversation link producing a real,
+   sendable thread. One small bug caught in this pass too: the scoped-context block's
+   "full assistant transcript (1 turns)" — fixed to pluralize correctly. Lint and build
+   both clean throughout. With this correction, the frontend-first phase across all 9
+   modules is, as far as a direct wireframe audit can confirm, actually complete now —
+   stated with that hedge deliberately, since the same file-vs-source drift that caused
+   this correction is exactly the failure mode to stay honest about, not repeat.
 7. ~~**Module 09 (admin console)**: console, kyc, moderation, ledger, payout-batch,
    disputes, fraud, analytics, config, audit~~ — **done, client-side only.** All 10
    routes are wired. Added `AdminContext` (§7 three-file split — `adminRole` in

@@ -44,9 +44,12 @@ export default function Feed() {
         ))}
       </div>
 
-      <div className="flex gap-2.5 rounded-xl border border-info bg-info-soft p-3 text-[12.5px] leading-relaxed text-info-text">
+      <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-info bg-info-soft p-3 text-[12.5px] leading-relaxed text-info-text">
         <span aria-hidden="true">i</span>
-        <span>{activeTab.copy}</span>
+        <span className="flex-1">{activeTab.copy}</span>
+        {tab === 'explore' && (
+          <Button to="/social/explore" size="sm" variant="tertiary">Open full Explore →</Button>
+        )}
       </div>
 
       {hiddenBlockedCount > 0 && (

@@ -3,6 +3,7 @@ import { AiContext } from './ai-context';
 import {
   ESCALATE_MONEY_KEYWORDS, ESCALATE_SAFETY_KEYWORDS, BOOKING_REF_RE,
   WEATHER_ALERTS, WEATHER_DECISION_STATUS,
+  EXCLUDED_FROM_AGENT, buildScopedContext, TRACK_SHARES_SEED,
 } from './ai-context';
 import { TOURS } from '../../data/traveler/tours';
 import { useBooking } from '../booking/useBooking';
@@ -66,6 +67,20 @@ export function AiProvider({ children }) {
 
   const checkIn = (landmarkId, { notifyContact = false } = {}) => {
     setCheckIns((c) => ({ ...c, [landmarkId]: { at: Date.now(), notifiedContact: notifyContact } }));
+  };
+
+  // --- live in-trip tracking (§6 08-ai isTracking) ---------------------------
+  // "Who can see this" toggle state — real, not decorative. `trackLastPingAt`
+  // is a lazy initializer (allowed one Date.now() call, per the same
+  // react-hooks/purity-safe pattern `weatherAlerts` below already uses) fixed
+  // ~50 minutes in the past so the Tracking screen's "last known point" honest
+  // copy has something genuinely stale to report, matching the deliberate
+  // signal-lost leg in `TRACK_LEGS`.
+  const [trackShares, setTrackShares] = useState(TRACK_SHARES_SEED);
+  const [trackLastPingAt] = useState(() => Date.now() - 47 * 60000);
+
+  const toggleTrackShare = (id) => {
+    setTrackShares((ts) => ts.map((t) => (t.id === id ? { ...t, on: !t.on } : t)));
   };
 
   // --- weather override flow (§3) --------------------------------------------
@@ -213,17 +228,12 @@ export function AiProvider({ children }) {
     }
 
     if (escalate) {
-      const latestBooking = bookings[bookings.length - 1];
       toolCalls.push({
         name: 'escalateToHuman',
         args: { reason: escalate },
         result: {
-          scopedContext: {
-            bookingRef: latestBooking?.ref || null,
-            transcript: 'shared with agent',
-            paymentMethodStatus: latestBooking ? `${latestBooking.method || 'n/a'} · ${latestBooking.state}` : 'no active booking',
-          },
-          excluded: ['CNIC', 'card number', 'other bookings'],
+          scopedContext: { ...buildScopedContext(bookings, escalate), transcriptTurns: messages.length },
+          excluded: EXCLUDED_FROM_AGENT,
         },
       });
     }
@@ -237,7 +247,6 @@ export function AiProvider({ children }) {
   // immediately rather than routing through sendChatMessage's keyword/fail-
   // streak classifier.
   const escalateNow = () => {
-    const latestBooking = bookings[bookings.length - 1];
     setMessages((m) => m.concat({
       id: genId('u'), role: 'user', text: 'Talk to a person.', toolCalls: [], escalate: null, at: Date.now(),
     }, {
@@ -246,12 +255,8 @@ export function AiProvider({ children }) {
         name: 'escalateToHuman',
         args: { reason: 'user' },
         result: {
-          scopedContext: {
-            bookingRef: latestBooking?.ref || null,
-            transcript: 'shared with agent',
-            paymentMethodStatus: latestBooking ? `${latestBooking.method || 'n/a'} · ${latestBooking.state}` : 'no active booking',
-          },
-          excluded: ['CNIC', 'card number', 'other bookings'],
+          scopedContext: { ...buildScopedContext(bookings, 'user'), transcriptTurns: messages.length },
+          excluded: EXCLUDED_FROM_AGENT,
         },
       }],
     }));
@@ -264,6 +269,7 @@ export function AiProvider({ children }) {
     sendChatMessage, escalateNow,
     geofence, setGeofenceState, checkIns, checkIn,
     weatherAlerts, decideWeatherAlert, autoPostponeAlert,
+    trackShares, toggleTrackShare, trackLastPingAt,
   };
 
   return <AiContext.Provider value={value}>{children}</AiContext.Provider>;

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAi } from '../../context/ai/useAi';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';
@@ -18,6 +19,7 @@ function ToolCallBlock({ call }) {
 }
 
 export default function Chatbot() {
+  const navigate = useNavigate();
   const { messages, sendChatMessage, escalateNow } = useAi();
   const [text, setText] = useState('');
 
@@ -27,11 +29,21 @@ export default function Chatbot() {
     setText('');
   };
 
+  // Always visible in this header row, never conditional on a failed answer
+  // (§3) — reaches the dedicated `ai/escalation` hand-off screen, which is a
+  // real destination on top of (not instead of) the inline transparency
+  // below. `escalateNow` still fires first so the transcript itself also
+  // records the hand-off, same as every other escalation path.
+  const onTalkToPerson = () => {
+    escalateNow();
+    navigate('/ai/escalation');
+  };
+
   return (
     <div className="mx-auto flex max-w-[640px] flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight">Ask Safar</h1>
-        <Button variant="secondary" size="sm" onClick={escalateNow}>Talk to a person</Button>
+        <Button variant="secondary" size="sm" onClick={onTalkToPerson}>Talk to a person</Button>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -50,7 +62,11 @@ export default function Chatbot() {
                 {m.toolCalls.map((c, i) => <ToolCallBlock key={i} call={c} />)}
               </div>
             )}
-            {m.escalate && <StatusPill tone="warning">{ESCALATE_LABEL[m.escalate] || 'Escalated'}</StatusPill>}
+            {m.escalate && (
+              <button type="button" onClick={() => navigate('/ai/escalation')} className="cursor-pointer border-0 bg-transparent p-0">
+                <StatusPill tone="warning">{ESCALATE_LABEL[m.escalate] || 'Escalated'} — view →</StatusPill>
+              </button>
+            )}
           </div>
         ))}
       </div>

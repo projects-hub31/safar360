@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../../context/app/useApp';
 import { useBooking } from '../../context/booking/useBooking';
+import { TRACK_BOOKING_REF } from '../../context/ai/ai-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';
@@ -64,6 +65,9 @@ export default function History() {
               </div>
               <span className="font-mono text-sm font-semibold">{formatMoney(b.total)}</span>
               <StatusPill tone={PILL[b.state] || 'neutral'}>{b.state}</StatusPill>
+              {b.ref === TRACK_BOOKING_REF && b.state === 'confirmed' && (
+                <Button to="/ai/tracking" size="sm" variant="secondary">Track live</Button>
+              )}
               {b.state === 'confirmed' && (
                 <Button to={`/booking/cancel/${b.ref}`} size="sm" variant="secondary">Cancel</Button>
               )}

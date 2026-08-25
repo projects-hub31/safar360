@@ -57,7 +57,11 @@ export default function PostCard({ post }) {
       ) : null}
 
       <div className="flex flex-wrap gap-1.5">
-        {post.tags.map((t) => <span key={t} className="text-xs font-semibold text-primary-soft-text">{t}</span>)}
+        {post.tags.map((t) => (
+          <Link key={t} to="/social/explore" state={{ tag: t }} className="text-xs font-semibold text-primary-soft-text no-underline">
+            {t}
+          </Link>
+        ))}
       </div>
 
       <div className="flex items-center gap-4 border-t border-border pt-2 text-[13px] text-fg-muted">

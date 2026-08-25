@@ -35,6 +35,21 @@ const SEEDED_BOOKING = {
   departureAt: Date.now() + 6 * 86400000, cancellationPolicy: 'standard', at: Date.now() - 5 * 86400000,
 };
 
+// A second seeded confirmed booking, this one already *in progress* (its
+// `departureAt` is 2 days in the past against a 5-day tour, putting "today"
+// on day 3) rather than upcoming — needed because `ai/tracking`'s live
+// in-trip location screen (§6 08-ai `isTracking`) has nothing honest to show
+// against a booking that hasn't departed yet. Matches
+// `VendorContext.SEED_LEDGER`'s still-`released`, still-untouched `LG-4001`
+// row (gross 113250 = 2 seats × Rs 56,625, Hunza & Attabad Lake) — same
+// "reuse a real seam, don't invent a disconnected demo booking" reasoning as
+// `SEEDED_BOOKING` above.
+const SEEDED_ACTIVE_BOOKING = {
+  ref: 'SFR-2026-0801-2210', tourId: 'hunza', title: 'Hunza & Attabad Lake — 5 days',
+  seats: 2, total: 113250, method: 'jazzcash', state: 'confirmed', guests: [],
+  departureAt: Date.now() - 2 * 86400000, cancellationPolicy: 'standard', at: Date.now() - 12 * 86400000,
+};
+
 export function BookingProvider({ children }) {
   // Canonical, mutable seat availability — every screen that shows or changes
   // a seat count reads this, not the static seed in tours.js (§3: the server
@@ -43,7 +58,7 @@ export function BookingProvider({ children }) {
   const [avail, setAvail] = useState(() => ({ ...AVAILABILITY }));
   const [lock, setLock] = useState(null);
   const [paymentState, setPaymentState] = useState('idle');
-  const [bookings, setBookings] = useState(() => [SEEDED_BOOKING]);
+  const [bookings, setBookings] = useState(() => [SEEDED_BOOKING, SEEDED_ACTIVE_BOOKING]);
   const [requests, setRequests] = useState([]);
   const [groups, setGroups] = useState([]);
 

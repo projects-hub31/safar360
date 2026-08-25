@@ -38,6 +38,14 @@ export const AUTHORS = {
   'baltistan-trails': { id: 'baltistan-trails', name: 'Baltistan Trails', kind: 'operator', tier: null, verified: true },
   'amna-sheikh': { id: 'amna-sheikh', name: 'Amna Sheikh', kind: 'influencer', tier: 'Platinum', verified: true },
   'bilal-yousaf': { id: 'bilal-yousaf', name: 'Bilal Yousaf', kind: 'traveller', tier: null, verified: false },
+  // The human agent an `ai/escalation` hand-off's "Open the conversation"
+  // action starts a real thread with — reuses this app's one real messaging
+  // system (Sending→Sent→Delivered states, retry, block/unblock) rather than
+  // faking a second, parallel "support chat" surface. Not a bot: the opening
+  // message is a single honest acknowledgment (see SocialContext.startThread's
+  // `seedFromThem` param), never a scripted back-and-forth pretending a human
+  // is actively typing replies.
+  support: { id: 'support', name: 'Nida · safar360 support', kind: 'support', tier: null, verified: true },
 };
 
 // A comment/post's own `state` follows the same live/under_review vocabulary

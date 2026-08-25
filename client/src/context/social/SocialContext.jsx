@@ -184,11 +184,16 @@ export function SocialProvider({ children }) {
     }, 500);
   };
 
-  const startThread = (authorId) => {
+  // `seedFromThem` only applies the first time a thread with `authorId` is
+  // created (an existing thread is returned as-is) — used by `ai/escalation`'s
+  // "Open the conversation" action to open a real thread with a single honest
+  // opening line from the agent, not a fabricated ongoing conversation.
+  const startThread = (authorId, seedFromThem) => {
     const existing = threads.find((t) => t.withId === authorId);
     if (existing) return existing.id;
     const id = genId('t');
-    setThreads((ts) => ts.concat({ id, withId: authorId, blocked: false, messages: [] }));
+    const messages = seedFromThem ? [{ id: genId('m'), from: 'them', text: seedFromThem, state: 'delivered', at: Date.now() }] : [];
+    setThreads((ts) => ts.concat({ id, withId: authorId, blocked: false, messages }));
     return id;
   };
 

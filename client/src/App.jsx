@@ -86,6 +86,7 @@ const Report = lazy(() => import('./pages/social/Report'));
 const Campaigns = lazy(() => import('./pages/social/Campaigns'));
 const Collab = lazy(() => import('./pages/social/Collab'));
 const Referrals = lazy(() => import('./pages/social/Referrals'));
+const Explore = lazy(() => import('./pages/social/Explore'));
 
 const Planner = lazy(() => import('./pages/ai/Planner'));
 const Itinerary = lazy(() => import('./pages/ai/Itinerary'));
@@ -95,6 +96,8 @@ const AiMap = lazy(() => import('./pages/ai/Map'));
 const Landmark = lazy(() => import('./pages/ai/Landmark'));
 const Geofence = lazy(() => import('./pages/ai/Geofence'));
 const Weather = lazy(() => import('./pages/ai/Weather'));
+const AiTracking = lazy(() => import('./pages/ai/Tracking'));
+const Escalation = lazy(() => import('./pages/ai/Escalation'));
 
 const Console = lazy(() => import('./pages/admin/Console'));
 const AdminKyc = lazy(() => import('./pages/admin/Kyc'));
@@ -199,6 +202,7 @@ const App = () => {
           <Route path="social/campaigns" element={<Campaigns />} />
           <Route path="social/collab/:id" element={<Collab />} />
           <Route path="social/referrals" element={<Referrals />} />
+          <Route path="social/explore" element={<Explore />} />
           <Route path="ai/planner" element={<Planner />} />
           <Route path="ai/itinerary" element={<Itinerary />} />
           <Route path="ai/saved" element={<Saved />} />
@@ -206,6 +210,8 @@ const App = () => {
           <Route path="ai/map" element={<AiMap />} />
           <Route path="ai/landmark/:id" element={<Landmark />} />
           <Route path="ai/geofence/:landmarkId" element={<Geofence />} />
+          <Route path="ai/tracking/:ref?" element={<AiTracking />} />
+          <Route path="ai/escalation" element={<Escalation />} />
           <Route path="ai/weather" element={<Weather />} />
           <Route path="admin/console" element={<Console />} />
           <Route path="admin/kyc" element={<AdminKyc />} />
