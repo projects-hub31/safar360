@@ -37,6 +37,21 @@ export const SEED_SPONSORED_SOLD = 1; // out of the cap, in the region this vend
 // only ever sees one final computed number (never a base+surcharge split).
 export const SEASON_MULTIPLIERS = { peak: 1.4, shoulder: 1.0, winter: 0.6 };
 
+// Jun–Aug and Dec–Feb read as peak/winter respectively for a Gilgit-Baltistan
+// lodge; everything else is shoulder. A real deployment would key this off
+// the property's own calendar, but the rule has to live somewhere so the
+// "one final computed number" promise above is actually computed, not just
+// asserted — see roomRate().
+export function seasonFor(dateStr) {
+  const month = dateStr ? new Date(dateStr).getMonth() + 1 : new Date().getMonth() + 1;
+  if ([6, 7, 8].includes(month)) return 'peak';
+  if ([12, 1, 2].includes(month)) return 'winter';
+  return 'shoulder';
+}
+export function roomRate(nightlyRate, checkIn) {
+  return Math.round(nightlyRate * SEASON_MULTIPLIERS[seasonFor(checkIn)]);
+}
+
 export function daysLeftStatus(daysLeft) {
   if (daysLeft < 0) return { label: 'Expired', tone: 'danger' };
   if (daysLeft <= PERMIT_WARNING_DAYS) return { label: 'Expiring', tone: 'warning' };

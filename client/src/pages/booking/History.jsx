@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../../context/useApp';
 import { useBooking } from '../../context/useBooking';
 import Card from '../../components/ui/Card';
@@ -23,11 +24,16 @@ export default function History() {
 
   return (
     <div className="mx-auto flex max-w-[720px] flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Booking history</h1>
-        <p className="text-sm text-fg-muted">
-          {bookings.length} booking{bookings.length === 1 ? '' : 's'} on this account.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Booking history</h1>
+          <p className="text-sm text-fg-muted">
+            {bookings.length} booking{bookings.length === 1 ? '' : 's'} on this account.
+          </p>
+        </div>
+        <Link to="/discover/enquiries" className="text-sm font-semibold text-primary-soft-text no-underline">
+          My enquiries →
+        </Link>
       </div>
 
       <div className="flex gap-1.5">

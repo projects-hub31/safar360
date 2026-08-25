@@ -8,6 +8,7 @@ import PropertyDetail from './pages/traveler/PropertyDetail';
 import Wishlist from './pages/traveler/Wishlist';
 import Profile from './pages/traveler/Profile';
 import Transport from './pages/traveler/Transport';
+import MyEnquiries from './pages/traveler/Enquiries';
 import RoleSelect from './pages/identity/RoleSelect';
 import Register from './pages/identity/Register';
 import Login from './pages/identity/Login';
@@ -49,6 +50,25 @@ import Rooms from './pages/transport/Rooms';
 import Menu from './pages/transport/Menu';
 import Enquiries from './pages/transport/Enquiries';
 import Featured from './pages/transport/Featured';
+import Catalog from './pages/shop/Catalog';
+import Product from './pages/shop/Product';
+import Cart from './pages/shop/Cart';
+import ShopCheckout from './pages/shop/Checkout';
+import Order from './pages/shop/Order';
+import Tracking from './pages/shop/Tracking';
+import ShopOutcome from './pages/shop/Outcome';
+import Returns from './pages/shop/Returns';
+import Feed from './pages/social/Feed';
+import Composer from './pages/social/Composer';
+import Post from './pages/social/Post';
+import SocialProfile from './pages/social/Profile';
+import Chats from './pages/social/Chats';
+import Thread from './pages/social/Thread';
+import Report from './pages/social/Report';
+import Planner from './pages/ai/Planner';
+import Itinerary from './pages/ai/Itinerary';
+import Saved from './pages/ai/Saved';
+import Chatbot from './pages/ai/Chatbot';
 
 const App = () => {
   return (
@@ -62,6 +82,7 @@ const App = () => {
         <Route path="discover/wishlist" element={<Wishlist />} />
         <Route path="discover/profile" element={<Profile />} />
         <Route path="discover/transport" element={<Transport />} />
+        <Route path="discover/enquiries" element={<MyEnquiries />} />
         <Route path="identity/role" element={<RoleSelect />} />
         <Route path="identity/register" element={<Register />} />
         <Route path="identity/login" element={<Login />} />
@@ -108,6 +129,28 @@ const App = () => {
         <Route path="transport/menu" element={<Menu />} />
         <Route path="transport/enquiries" element={<Enquiries />} />
         <Route path="transport/featured" element={<Featured />} />
+        <Route path="shop/catalog" element={<Catalog />} />
+        <Route path="shop/product/:id" element={<Product />} />
+        <Route path="shop/cart" element={<Cart />} />
+        <Route path="shop/checkout" element={<ShopCheckout />} />
+        <Route path="shop/order" element={<Order />} />
+        <Route path="shop/tracking/:ref?" element={<Tracking />} />
+        <Route path="shop/returns/:ref/:subOrderId" element={<Returns />} />
+        <Route path="shop/expired" element={<ShopOutcome kind="expired" />} />
+        <Route path="shop/failed" element={<ShopOutcome kind="failed" />} />
+        <Route path="shop/held" element={<ShopOutcome kind="held" />} />
+        <Route path="shop/sold-out" element={<ShopOutcome kind="sold-out" />} />
+        <Route path="social/feed" element={<Feed />} />
+        <Route path="social/composer" element={<Composer />} />
+        <Route path="social/post/:id" element={<Post />} />
+        <Route path="social/profile/:id?" element={<SocialProfile />} />
+        <Route path="social/chats" element={<Chats />} />
+        <Route path="social/thread/:id" element={<Thread />} />
+        <Route path="social/report/:targetType/:targetId" element={<Report />} />
+        <Route path="ai/planner" element={<Planner />} />
+        <Route path="ai/itinerary" element={<Itinerary />} />
+        <Route path="ai/saved" element={<Saved />} />
+        <Route path="ai/chatbot" element={<Chatbot />} />
         <Route path="*" element={<ComingSoon />} />
       </Route>
     </Routes>

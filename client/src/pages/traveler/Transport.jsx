@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/useAuth';
 import { useTransport } from '../../context/useTransport';
 import Button from '../../components/ui/Button';
@@ -58,6 +59,9 @@ export default function Transport() {
             <p className="text-sm leading-relaxed text-fg-muted">
               The owner has 24 hours to reply with a quote. You haven't been charged and no seat has been held.
             </p>
+            <Link to="/discover/enquiries" className="text-sm font-semibold text-primary-soft-text no-underline">
+              View my enquiries →
+            </Link>
           </div>
         ) : (
           <>

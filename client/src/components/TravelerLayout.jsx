@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import Logo from './Logo';
 import { useApp } from '../context/useApp';
 import { useAuth } from '../context/useAuth';
+import { useShop } from '../context/useShop';
 import { ROLES } from '../context/auth-context';
 import Button from './ui/Button';
 
@@ -17,7 +18,9 @@ function navLinkClasses({ isActive }) {
 export default function TravelerLayout() {
   const { theme, toggleTheme, currency, setCurrency } = useApp();
   const { user, signOut, switchRole } = useAuth();
+  const { cart } = useShop();
   const navigate = useNavigate();
+  const cartCount = cart.reduce((n, l) => n + l.qty, 0);
 
   // Nav is role-aware (§5 per-role default nav) — a signed-out visitor and a
   // traveller both get the traveller nav, since that's the only role with a
@@ -89,7 +92,7 @@ export default function TravelerLayout() {
                 >
                   Cart
                   <span className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-mono text-[11px] font-bold text-primary-on">
-                    0
+                    {cartCount}
                   </span>
                 </NavLink>
                 <NavLink

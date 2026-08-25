@@ -112,7 +112,7 @@ export default function TourDetail() {
               <span className="inline-flex items-center gap-1 rounded-md border border-success bg-success-soft px-2 py-1 text-xs font-semibold text-success-text">
                 ✓ Verified operator
               </span>
-              <Link to="/social/profile" className="text-[13px] font-semibold no-underline">{tour.operator}</Link>
+              <Link to={`/social/profile/${tour.operator.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`} className="text-[13px] font-semibold no-underline">{tour.operator}</Link>
             </div>
           </div>
 

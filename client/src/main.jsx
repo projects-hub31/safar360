@@ -8,6 +8,9 @@ import { AuthProvider } from './context/AuthContext.jsx'
 import { BookingProvider } from './context/BookingContext.jsx'
 import { VendorProvider } from './context/VendorContext.jsx'
 import { TransportProvider } from './context/TransportContext.jsx'
+import { ShopProvider } from './context/ShopContext.jsx'
+import { SocialProvider } from './context/SocialContext.jsx'
+import { AiProvider } from './context/AiContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -17,7 +20,16 @@ createRoot(document.getElementById('root')).render(
           <BookingProvider>
             <VendorProvider>
               <TransportProvider>
-                <App />
+                <ShopProvider>
+                  <SocialProvider>
+                    {/* AiProvider reads useBooking() (live seats, bookings) internally
+                        for the planner/itinerary/chatbot, so it must nest under
+                        BookingProvider — see AiContext.jsx. */}
+                    <AiProvider>
+                      <App />
+                    </AiProvider>
+                  </SocialProvider>
+                </ShopProvider>
               </TransportProvider>
             </VendorProvider>
           </BookingProvider>
