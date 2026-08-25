@@ -1,26 +1,28 @@
 import { useRef, useState } from 'react';
 import { AiContext } from './ai-context';
-import { ESCALATE_MONEY_KEYWORDS, ESCALATE_SAFETY_KEYWORDS, BOOKING_REF_RE } from './ai-context';
+import {
+  ESCALATE_MONEY_KEYWORDS, ESCALATE_SAFETY_KEYWORDS, BOOKING_REF_RE,
+  WEATHER_ALERTS, WEATHER_DECISION_STATUS,
+} from './ai-context';
 import { TOURS } from '../../data/traveler/tours';
 import { useBooking } from '../booking/useBooking';
+import { useVendor } from '../vendor/useVendor';
 
+// Now cross-referenced to `data/ai/landmarks.js`'s hand-curated collection
+// via `landmarkId` (§3: landmarks are their own collection, not duplicated
+// ad hoc place-name strings) rather than the two staying silently parallel.
 const FORECASTS = {
-  hunza: { tempC: 14, condition: 'Partly cloudy', windKmh: 18 },
-  skardu: { tempC: 9, condition: 'Clear', windKmh: 12 },
-  deosai: { tempC: 2, condition: 'Snow risk overnight', windKmh: 35 },
-  fairy: { tempC: 6, condition: 'Clear, cold mornings', windKmh: 14 },
+  hunza: { landmarkId: 'hunza-attabad', tempC: 14, condition: 'Partly cloudy', windKmh: 18 },
+  skardu: { landmarkId: 'deosai-sheosar', tempC: 9, condition: 'Clear', windKmh: 12 },
+  deosai: { landmarkId: 'deosai-sheosar', tempC: 2, condition: 'Snow risk overnight', windKmh: 35 },
+  fairy: { landmarkId: 'fairy-meadows', tempC: 6, condition: 'Clear, cold mornings', windKmh: 14 },
 };
 const ROADS = {
-  khunjerab: { status: 'open', note: 'Open, normal border-crossing hours.' },
-  babusar: { status: 'open', note: 'Open, light snow possible this weekend.' },
-  fairymeadows: { status: 'jeep-only', note: 'Jeep track open to Tato; foot from there as usual.' },
+  khunjerab: { landmarkId: 'khunjerab-pass', status: 'open', note: 'Open, normal border-crossing hours.' },
+  babusar: { landmarkId: null, status: 'open', note: 'Open, light snow possible this weekend.' },
+  fairymeadows: { landmarkId: 'fairy-meadows', status: 'jeep-only', note: 'Jeep track open to Tato; foot from there as usual.' },
 };
 
-// §3 "Landmarks are a hand-curated collection... the assistant/chatbot can
-// reference them but never adds to the list" — no landmark screen exists yet
-// in this pass, so getForecast/getRoadStatus key off TOURS ids/regions
-// directly rather than a separate landmark collection that would just
-// duplicate a subset of the same names.
 function scoreInterest(tour, interests) {
   if (!interests.length) return 0;
   const hay = `${tour.title} ${tour.meta} ${tour.region}`.toLowerCase();
@@ -35,7 +37,11 @@ function findRoadKey(text) {
 }
 
 export function AiProvider({ children }) {
-  const { avail, bookings } = useBooking();
+  const { avail, bookings, cancelBooking } = useBooking();
+  // VendorProvider is an ancestor of AiProvider in main.jsx's tree, so this
+  // is available here — the weather-cancel flow can call the real, shared
+  // `reverseLedger` directly rather than needing a page to broker it.
+  const { reverseLedger } = useVendor();
 
   const [currentItinerary, setCurrentItinerary] = useState(null);
   const [saved, setSaved] = useState([]);
@@ -43,6 +49,62 @@ export function AiProvider({ children }) {
     { id: 'b0', role: 'assistant', text: 'Ask me about a booking, weather on a route, road status, or trip ideas. Anything about money or safety goes straight to a person.', toolCalls: [], escalate: null, at: Date.now() },
   ]);
   const [failStreak, setFailStreak] = useState(0);
+
+  // --- landmarks / geofence (§3) ---------------------------------------------
+  // `geofence`: { [landmarkId]: 'prompt' | 'granted' | 'denied' | 'unavailable' }
+  // `checkIns`: { [landmarkId]: { at, notifiedContact } } — marks a mapped
+  // point (and, transitively, any itinerary day booking that same tour) as
+  // reached. No public-post effect exists at all here, by design (§3: "never
+  // posts publicly by default" — satisfied by simply not offering that
+  // control, not a flag defaulted off).
+  const [geofence, setGeofence] = useState({});
+  const [checkIns, setCheckIns] = useState({});
+
+  const setGeofenceState = (landmarkId, state) => {
+    setGeofence((g) => ({ ...g, [landmarkId]: state }));
+  };
+
+  const checkIn = (landmarkId, { notifyContact = false } = {}) => {
+    setCheckIns((c) => ({ ...c, [landmarkId]: { at: Date.now(), notifiedContact: notifyContact } }));
+  };
+
+  // --- weather override flow (§3) --------------------------------------------
+  // A lazy initializer (allowed to call Date.now() once, per the react-hooks
+  // purity rule this codebase enforces elsewhere) rather than a static seed
+  // constant carrying a stale build-time timestamp.
+  const [weatherAlerts, setWeatherAlerts] = useState(() => WEATHER_ALERTS.map((a) => ({
+    ...a, status: 'pending', decision: null, issuedAt: Date.now(), decidedAt: null, refundResult: null,
+  })));
+
+  // `refundPct` is supplied by the caller (the Weather screen reads
+  // `policy.weatherRefundPct` live from AdminContext, which this provider has
+  // no access to — Admin nests *inside* Ai in main.jsx's tree, not outside
+  // it) — this keeps the live-policy read at the page level while the actual
+  // money-moving mutation stays here, calling the same ordinary
+  // `cancelBooking`/`reverseLedger` actions every other cancellation flow
+  // uses. No parallel weather-refund code path.
+  const decideWeatherAlert = (alertId, decision, { refundPct } = {}) => {
+    const alert = weatherAlerts.find((a) => a.id === alertId);
+    if (!alert || alert.status !== 'pending') return null;
+    let result = null;
+    if (decision === 'cancel' && alert.linkedBookingRef) {
+      result = cancelBooking(alert.linkedBookingRef, 'weather', refundPct);
+      if (alert.linkedLedgerId) reverseLedger(alert.linkedLedgerId);
+    }
+    setWeatherAlerts((alerts) => alerts.map((a) => (a.id === alertId
+      ? { ...a, status: WEATHER_DECISION_STATUS[decision], decision, decidedAt: Date.now(), refundResult: result }
+      : a)));
+    return result;
+  };
+
+  // Countdown's own `onExpire` fires this — "no decision = auto-postpone"
+  // (§3) is a real timeout, not an operator choice, so it's a distinct status
+  // rather than routed through `decideWeatherAlert`'s decision map.
+  const autoPostponeAlert = (alertId) => {
+    setWeatherAlerts((alerts) => alerts.map((a) => (a.id === alertId && a.status === 'pending'
+      ? { ...a, status: 'auto-postponed', decision: null, decidedAt: Date.now() }
+      : a)));
+  };
 
   const nextId = useRef(1);
   const genId = (prefix) => `${prefix}${nextId.current++}`;
@@ -200,6 +262,8 @@ export function AiProvider({ children }) {
     currentItinerary, saved, messages,
     planTrip, recostItinerary, saveItinerary,
     sendChatMessage, escalateNow,
+    geofence, setGeofenceState, checkIns, checkIn,
+    weatherAlerts, decideWeatherAlert, autoPostponeAlert,
   };
 
   return <AiContext.Provider value={value}>{children}</AiContext.Provider>;

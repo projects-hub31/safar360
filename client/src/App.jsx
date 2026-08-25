@@ -72,6 +72,9 @@ const Order = lazy(() => import('./pages/shop/Order'));
 const Tracking = lazy(() => import('./pages/shop/Tracking'));
 const ShopOutcome = lazy(() => import('./pages/shop/Outcome'));
 const Returns = lazy(() => import('./pages/shop/Returns'));
+const SellerProducts = lazy(() => import('./pages/shop/SellerProducts'));
+const Fulfilment = lazy(() => import('./pages/shop/Fulfilment'));
+const SellerReturns = lazy(() => import('./pages/shop/SellerReturns'));
 
 const Feed = lazy(() => import('./pages/social/Feed'));
 const Composer = lazy(() => import('./pages/social/Composer'));
@@ -80,11 +83,18 @@ const SocialProfile = lazy(() => import('./pages/social/Profile'));
 const Chats = lazy(() => import('./pages/social/Chats'));
 const Thread = lazy(() => import('./pages/social/Thread'));
 const Report = lazy(() => import('./pages/social/Report'));
+const Campaigns = lazy(() => import('./pages/social/Campaigns'));
+const Collab = lazy(() => import('./pages/social/Collab'));
+const Referrals = lazy(() => import('./pages/social/Referrals'));
 
 const Planner = lazy(() => import('./pages/ai/Planner'));
 const Itinerary = lazy(() => import('./pages/ai/Itinerary'));
 const Saved = lazy(() => import('./pages/ai/Saved'));
 const Chatbot = lazy(() => import('./pages/ai/Chatbot'));
+const AiMap = lazy(() => import('./pages/ai/Map'));
+const Landmark = lazy(() => import('./pages/ai/Landmark'));
+const Geofence = lazy(() => import('./pages/ai/Geofence'));
+const Weather = lazy(() => import('./pages/ai/Weather'));
 
 const Console = lazy(() => import('./pages/admin/Console'));
 const AdminKyc = lazy(() => import('./pages/admin/Kyc'));
@@ -172,6 +182,9 @@ const App = () => {
           <Route path="shop/order" element={<Order />} />
           <Route path="shop/tracking/:ref?" element={<Tracking />} />
           <Route path="shop/returns/:ref/:subOrderId" element={<Returns />} />
+          <Route path="shop/seller-products" element={<SellerProducts />} />
+          <Route path="shop/fulfilment" element={<Fulfilment />} />
+          <Route path="shop/returns" element={<SellerReturns />} />
           <Route path="shop/expired" element={<ShopOutcome kind="expired" />} />
           <Route path="shop/failed" element={<ShopOutcome kind="failed" />} />
           <Route path="shop/held" element={<ShopOutcome kind="held" />} />
@@ -183,10 +196,17 @@ const App = () => {
           <Route path="social/chats" element={<Chats />} />
           <Route path="social/thread/:id" element={<Thread />} />
           <Route path="social/report/:targetType/:targetId" element={<Report />} />
+          <Route path="social/campaigns" element={<Campaigns />} />
+          <Route path="social/collab/:id" element={<Collab />} />
+          <Route path="social/referrals" element={<Referrals />} />
           <Route path="ai/planner" element={<Planner />} />
           <Route path="ai/itinerary" element={<Itinerary />} />
           <Route path="ai/saved" element={<Saved />} />
           <Route path="ai/chatbot" element={<Chatbot />} />
+          <Route path="ai/map" element={<AiMap />} />
+          <Route path="ai/landmark/:id" element={<Landmark />} />
+          <Route path="ai/geofence/:landmarkId" element={<Geofence />} />
+          <Route path="ai/weather" element={<Weather />} />
           <Route path="admin/console" element={<Console />} />
           <Route path="admin/kyc" element={<AdminKyc />} />
           <Route path="admin/moderation" element={<Moderation />} />

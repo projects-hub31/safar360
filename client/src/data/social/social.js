@@ -117,3 +117,95 @@ export const SEED_THREADS = [
     ],
   },
 ];
+
+// --- Collaborations (§3 "Collaboration lifecycle", §6 07 social collab/
+// campaigns/referrals — the influencer-only money screens) ------------------
+// Same single-demo-account limitation as every other queue in this app
+// (VendorContext.SEED_LEDGER, the admin console's KYC/fraud/dispute queues,
+// §8 build notes) — a real influencer-side campaigns dashboard needs several
+// collaborations at different lifecycle stages, which one demo account
+// acting as one influencer can't produce by itself. `DEMO_INFLUENCER_ID`
+// fixes the acting influencer identity to `amna-sheikh` — the one influencer
+// already in `AUTHORS` above, and the same name the admin console's Ledger/
+// Payout-Batch screens already seeded a referral/payout row for, so this
+// screen, Referrals, and the admin Ledger screen all agree on one person.
+export const DEMO_INFLUENCER_ID = 'amna-sheikh';
+
+// Exact legal graph (§3): invited→accepted→in_progress→delivered→paid,
+// invited→declined, accepted→cancelled (7-day notice). `startCollab` is this
+// app's own explicit step between "accepted" and "in_progress" (the spec's
+// lifecycle names both states but doesn't name the action between them).
+export const COLLAB_TRANSITIONS = {
+  invited: ['accepted', 'declined'],
+  accepted: ['in_progress', 'cancelled'],
+  in_progress: ['delivered'],
+  delivered: ['paid'],
+  paid: [],
+  declined: [],
+  cancelled: [],
+};
+
+// A deliverable is "verified" once the influencer marks the work done, and
+// separately "disclosed" once the mandatory paid-partnership disclosure is
+// on it (§2/§6 composer: disclosure is a mandatory checkbox, not a style
+// choice) — modelled as two independent booleans so a screen can refuse to
+// call a collaboration `delivered` until every deliverable is both.
+export const SEED_COLLABS = [
+  {
+    id: 'cb-1', operatorId: 'karakoram-expeditions', tourTitle: 'Hunza & Attabad Lake — 5 days', tourRef: 'SFR-2026-0914',
+    status: 'invited', escrowAmount: 45000, invitedAt: Date.now() - 2 * 86400000,
+    deliverables: [
+      { id: 'd1', label: '1 Instagram Reel (min 60s) from the trip', verified: false, disclosed: false },
+      { id: 'd2', label: '1 trip-report post on Safar360', verified: false, disclosed: false },
+    ],
+  },
+  {
+    id: 'cb-2', operatorId: 'baltistan-trails', tourTitle: 'Skardu & Deosai Plains — 7 days', tourRef: 'SFR-2026-0928',
+    status: 'invited', escrowAmount: 60000, invitedAt: Date.now() - 6 * 3600000,
+    deliverables: [
+      { id: 'd1', label: '2 Instagram Reels across the trip', verified: false, disclosed: false },
+      { id: 'd2', label: '1 YouTube vlog (min 8 minutes)', verified: false, disclosed: false },
+      { id: 'd3', label: '1 trip-report post on Safar360', verified: false, disclosed: false },
+    ],
+  },
+  {
+    id: 'cb-3', operatorId: 'karakoram-expeditions', tourTitle: 'Fairy Meadows Trek — 4 days', tourRef: 'SFR-2026-0801',
+    status: 'accepted', escrowAmount: 35000, invitedAt: Date.now() - 9 * 86400000, acceptedAt: Date.now() - 5 * 86400000,
+    deliverables: [
+      { id: 'd1', label: '1 Instagram Reel from Fairy Meadows', verified: false, disclosed: false },
+      { id: 'd2', label: '1 trip-report post on Safar360', verified: false, disclosed: false },
+    ],
+  },
+  {
+    id: 'cb-4', operatorId: 'baltistan-trails', tourTitle: 'Kalash Valleys — 6 days', tourRef: 'SFR-2026-0715',
+    status: 'in_progress', escrowAmount: 52000, invitedAt: Date.now() - 20 * 86400000, acceptedAt: Date.now() - 16 * 86400000,
+    deliverables: [
+      { id: 'd1', label: '1 Instagram Reel from the Kalash festival', verified: true, disclosed: true },
+      { id: 'd2', label: '1 photo essay post on Safar360', verified: false, disclosed: false },
+    ],
+  },
+  {
+    id: 'cb-5', operatorId: 'karakoram-expeditions', tourTitle: 'Gwadar Coastal — 3 days', tourRef: 'SFR-2026-0612',
+    status: 'delivered', escrowAmount: 28000, invitedAt: Date.now() - 40 * 86400000, acceptedAt: Date.now() - 37 * 86400000, deliveredAt: Date.now() - 6 * 86400000,
+    deliverables: [
+      { id: 'd1', label: '1 Instagram Reel from Gwadar', verified: true, disclosed: true },
+      { id: 'd2', label: '1 trip-report post on Safar360', verified: true, disclosed: true },
+    ],
+  },
+  {
+    id: 'cb-6', operatorId: 'baltistan-trails', tourTitle: 'Naltar Valley Ski Weekend', tourRef: 'SFR-2026-0402',
+    status: 'paid', escrowAmount: 22000, invitedAt: Date.now() - 70 * 86400000, acceptedAt: Date.now() - 67 * 86400000, deliveredAt: Date.now() - 55 * 86400000, paidAt: Date.now() - 50 * 86400000,
+    deliverables: [
+      { id: 'd1', label: '1 Instagram Reel from Naltar', verified: true, disclosed: true },
+      { id: 'd2', label: '1 trip-report post on Safar360', verified: true, disclosed: true },
+    ],
+  },
+  {
+    id: 'cb-7', operatorId: 'baltistan-trails', tourTitle: 'Deosai Plains Camping', tourRef: 'SFR-2026-0530',
+    status: 'cancelled', escrowAmount: 30000, invitedAt: Date.now() - 45 * 86400000, acceptedAt: Date.now() - 42 * 86400000, cancelledAt: Date.now() - 38 * 86400000, cancelledBy: 'you',
+    deliverables: [
+      { id: 'd1', label: '1 Instagram Reel from Deosai', verified: false, disclosed: false },
+      { id: 'd2', label: '1 trip-report post on Safar360', verified: false, disclosed: false },
+    ],
+  },
+];

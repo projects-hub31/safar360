@@ -1,16 +1,18 @@
 import { useRef, useState } from 'react';
 import { SocialContext } from './social-context';
-import { AUTO_REVIEW_AT, FAIL_MESSAGE_TRIGGER, CONTENT_STATES } from './social-context';
-import { SEED_POSTS, SEED_THREADS, AUTHORS } from '../../data/social/social';
+import { AUTO_REVIEW_AT, FAIL_MESSAGE_TRIGGER, CONTENT_STATES, COLLAB_TRANSITIONS } from './social-context';
+import { SEED_POSTS, SEED_THREADS, AUTHORS, SEED_COLLABS } from '../../data/social/social';
 
 // Module 07, traveller-facing slice (feed, composer, post detail, profile,
-// chats, thread, report), plus the two actions (moderateContent, appealPost)
+// chats, thread, report), the two actions (moderateContent, appealPost)
 // module 09's admin moderation queue calls — this stays the one place
 // CONTENT_STATES actually gets mutated, same reuse pattern as AuthContext's
-// shared setKycStatus. Campaigns/referrals (influencer-only money screens)
-// are still out of scope — see CLAUDE.md's module 07 build-order note.
+// shared setKycStatus — plus the influencer-only collaboration lifecycle
+// (§3 "Collaboration lifecycle") backing the Campaigns/Collab/Referrals
+// screens.
 export function SocialProvider({ children }) {
   const [posts, setPosts] = useState(SEED_POSTS);
+  const [collabs, setCollabs] = useState(SEED_COLLABS);
   // Per-report records (postId, reasonId, reporterId, at) — reportPost() used
   // to only bump an aggregate reportCount, which is enough for the traveller-
   // facing pass but not enough for a moderation queue to tally reasons
@@ -190,6 +192,52 @@ export function SocialProvider({ children }) {
     return id;
   };
 
+  // --- collaborations (§3 collaboration lifecycle, influencer-only) ---------
+  // One shared transition-checking action per legal move, same shape as
+  // moderateContent above: refuses a move that isn't legal from the
+  // collaboration's current status per COLLAB_TRANSITIONS rather than
+  // trusting the caller.
+  const transitionCollab = (id, action, extra = {}) => {
+    const collab = collabs.find((c) => c.id === id);
+    if (!collab) return { ok: false, error: 'Collaboration not found.' };
+    const legal = COLLAB_TRANSITIONS[collab.status] || [];
+    if (!legal.includes(action)) return { ok: false, error: `"${action}" isn't a legal move from "${collab.status}".` };
+    setCollabs((cs) => cs.map((c) => (c.id !== id ? c : { ...c, status: action, ...extra })));
+    return { ok: true };
+  };
+
+  const acceptCollab = (id) => transitionCollab(id, 'accepted', { acceptedAt: Date.now() });
+  const declineCollab = (id) => transitionCollab(id, 'declined', { declinedAt: Date.now() });
+  const startCollab = (id) => transitionCollab(id, 'in_progress', { startedAt: Date.now() });
+  // 7-day notice is stated as on-screen copy rather than a real scheduled
+  // effective date — same honest simplification as the room-reservation
+  // one-call note in CLAUDE.md §5 (no real scheduling engine exists here);
+  // the cancellation applies immediately in this demo.
+  const cancelCollab = (id) => transitionCollab(id, 'cancelled', { cancelledAt: Date.now(), cancelledBy: 'you' });
+
+  const toggleDeliverable = (collabId, deliverableId, field) => {
+    setCollabs((cs) => cs.map((c) => (c.id !== collabId ? c : {
+      ...c,
+      deliverables: c.deliverables.map((d) => (d.id !== deliverableId ? d : { ...d, [field]: !d[field] })),
+    })));
+  };
+
+  // Only legal once every deliverable is both verified and disclosed (§3:
+  // "released on verified + disclosed deliverables") — refused otherwise,
+  // same defensive-refusal shape as moderateContent/transitionCollab.
+  const markDelivered = (id) => {
+    const collab = collabs.find((c) => c.id === id);
+    if (!collab) return { ok: false, error: 'Collaboration not found.' };
+    if (!collab.deliverables.every((d) => d.verified && d.disclosed)) {
+      return { ok: false, error: 'Every deliverable must be verified and disclosed first.' };
+    }
+    return transitionCollab(id, 'delivered', { deliveredAt: Date.now() });
+  };
+
+  // Demo-only advance (no real payment gateway) — same honestly-labeled
+  // lever pattern as ShopContext.advanceFulfilment / BookingContext.forceOutcome.
+  const markPaid = (id) => transitionCollab(id, 'paid', { paidAt: Date.now() });
+
   // Falls back to a synthesized profile for any operator slug not in the seed
   // AUTHORS map (e.g. an operator linked from a tour card that has never
   // posted) rather than crashing a profile page that only has a name to go
@@ -209,6 +257,7 @@ export function SocialProvider({ children }) {
     toggleFollow, blockAccount, unblockAccount,
     sendMessage, retryMessage, startThread,
     authorOf,
+    collabs, acceptCollab, declineCollab, startCollab, cancelCollab, toggleDeliverable, markDelivered, markPaid,
   };
 
   return <SocialContext.Provider value={value}>{children}</SocialContext.Provider>;

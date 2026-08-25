@@ -39,3 +39,11 @@ export const RETURN_REASONS = [
 ];
 
 export const FULFILMENT_STEPS = ['packing', 'shipped', 'delivered'];
+
+// The seller identity this demo account acts as when wearing the `seller`
+// role — CLAUDE.md's "one demo account, every actor" pattern (§7) has no
+// existing concept of a per-account seller identity anywhere (unlike vendor/
+// transport/property, which are single-entity by construction already), so
+// this fixes it to one of the three seed SELLERS rather than inventing real
+// multi-seller-account switching that nothing else in the app supports yet.
+export const DEMO_SELLER_ID = 'karakoram-gear';

@@ -1482,15 +1482,145 @@ Given what's already scaffolded, the natural next slices are:
    calls, exactly the `payShare` fix pattern) and a `Date.now()` call in a non-lazy
    `useState` initializer in `AiContext` (an eslint `react-hooks/purity` catch, not a
    StrictMode one — fixed by switching to `useState(() => [...])`).
-   **Not done** (left for a future pass, not silently skipped): the seller side of
-   commerce (`seller-products`, `fulfilment` as a seller would drive it — travellers
-   can already trigger its steps via Tracking's honestly-labeled demo-advance button,
-   same lever as `BookingContext.forceOutcome`); the influencer-only money screens of
-   social (`collab`, `referrals`, `campaigns`); the AI module's `escalation` (folded
-   into the chatbot's inline escalation banner rather than a separate screen),
-   `map`/`landmark`/`geofence`/`weather`. Module 09 (admin) is now built — see item 7
-   below — and does import `SocialContext`'s `REPORT_REASONS`/`CONTENT_STATES` rather
-   than redefining them, exactly as this note originally anticipated.
+   **The seller side of commerce is now built too** (`shop/seller-products`,
+   `shop/fulfilment`, `shop/returns` — the three routes `auth-context.js`'s `ROLES`
+   table already declared for the `seller` role's nav but that fell through to
+   `ComingSoon` until this pass): a product list scoped to this seller's own catalog
+   with live per-variant stock and a new `restockVariant` action on `ShopContext`; a
+   fulfilment queue that reads the same shared `orders`/`advanceFulfilment` action
+   Tracking's traveller-facing demo-advance button already used (§7's "call the same
+   shared action" pattern, not a parallel mutation path), filtered so a seller only
+   ever sees their own sub-orders from a shared order — verified in-browser with a
+   real multi-seller cart, confirming the other seller's parcel never appears; and a
+   seller-facing returns list (`shop/returns`, no params) added to resolve a nav
+   mismatch — the declared route had no screen behind it at all before this pass,
+   only the traveller-facing `shop/returns/:ref/:subOrderId` flow existed. There is no
+   real per-account seller identity anywhere in the app yet (unlike vendor/transport/
+   property, which are single-entity by construction), so the demo account's acting
+   seller is fixed to `DEMO_SELLER_ID = 'karakoram-gear'` in `shop-context.js` rather
+   than building real multi-seller-account switching nothing else here supports.
+   Verified in-browser end to end: a two-seller cart checkout, restocking a sold-out
+   variant back to purchasable (confirmed from the traveller side), fulfilment
+   packing→shipped→delivered matching what Tracking shows the traveller for the same
+   order, and a return landing correctly on the seller's returns list with stock
+   restored. A real bug was caught in the process — `Product.jsx` didn't reset its
+   local `added`/`variantId` state when navigating directly between two product pages
+   (same route, different `:id` — React reuses the component instance), so the second
+   product could silently show a false "Added to your cart" success state without
+   `addToCart` ever having been called — **since fixed**: `Product.jsx` now wraps its
+   body in an inner `ProductView` keyed by `id` (`<ProductView key={id} id={id} />`),
+   forcing a real remount on navigation between products rather than reusing stale
+   state, per §7's own stated preference for a remount-via-key over an effect that
+   watches a prop and calls `setState`. Also flagged, not fixed: the seller nav's
+   "Money" item still points at `/vendor/payouts`, which is scoped to `VendorContext`'s
+   tour-operator ledger, not gear commission — a seller visiting it today sees the
+   wrong data.
+   **The influencer-only money screens are now built too** (`social/campaigns`,
+   `social/collab/:id`, `social/referrals` — the two routes `auth-context.js`'s `ROLES`
+   table already declared for the `influencer` role's nav, plus `collab` as its own
+   drill-in screen per the §5 route table). Added the collaboration lifecycle to
+   `SocialContext` (§3: `invited→accepted→in_progress→delivered→paid`,
+   `invited→declined`, `accepted→cancelled`) as a `COLLAB_TRANSITIONS` table enforced
+   the same defensive way `CONTENT_STATES`/`moderateContent` already are — an illegal
+   move is refused, not just unoffered. `startCollab` is this codebase's own explicit
+   action for the un-named step between "accepted" and "in_progress" the spec's lifecycle
+   diagram doesn't itself name. A deliverable is tracked as two independent booleans,
+   `verified`/`disclosed` (§3: "released on verified + disclosed deliverables"), each
+   with its own toggle — `markDelivered` refuses until every deliverable on the
+   collaboration is both. Cancelling states the real 7-day-notice rule as on-screen
+   copy but applies immediately in this demo (no scheduling engine exists here — same
+   honest-simplification spirit as the room-reservation one-call note above).
+   `INFLUENCER_PLATFORM_FEE_PCT = 10` (in `social-context.js`) implements the one rule
+   stated twice in the source spec — §3 campaigns "paid ... net of a 10% platform fee
+   withheld" and §6 referrals "'Earned, not yet paid' breaks out gross / 10% tax
+   withheld / net" — as a single shared constant applied at display time to both a
+   paid-out collaboration and a released referral row, rather than two independent
+   10%s that could drift apart. The Referrals screen satisfies §6's literal
+   requirement — "the same shared ledger rows... filtered to `kind==='referral'`, that
+   the admin ledger screen shows" — by importing `PLATFORM_LEDGER_EXTRA` directly from
+   `context/admin/admin-context.js` rather than a second seed array; verified
+   in-browser that the rows and figures shown there are pixel-identical to what the
+   admin Ledger screen shows filtered to Referral. As with the seller module, there is
+   no real per-account influencer identity, so the demo account's acting influencer is
+   fixed to `DEMO_INFLUENCER_ID = 'amna-sheikh'` (already the one influencer seeded in
+   `AUTHORS`, and the same name the admin console's Ledger/Payout-Batch screens already
+   used) — one real seeded referral row for her was too thin to demo more than one
+   ledger state, so two more (`plr-7` accruing, `plr-8` released) were added directly
+   to `PLATFORM_LEDGER_EXTRA` in `data/admin/admin.js`, which also enriches what the
+   admin Ledger screen shows — a deliberate, documented side effect, not a leak.
+   Verified in-browser end to end: accept → start work → verify+disclose both
+   deliverables → mark delivered (button correctly disabled with a caption until every
+   deliverable is done) → mark paid, watching the Campaigns KPI totals and the
+   Earned-vs-Paid breakdown recompute correctly at each step (net = gross × 0.9); a
+   separate accepted collaboration cancelled with the inline consequence-with-amount
+   confirm (§2: destructive confirms never say "Confirm" alone); zero console errors
+   throughout.
+   The AI module's remaining screens — `map`, `landmark`, `geofence`, `weather` — are
+   now built too (this closes out the module 08 gap the paragraph above used to list).
+   `escalation` stays folded into the chatbot's inline banner, confirmed still correct
+   on this pass (the "Talk to a person" control is genuinely always on screen, not
+   buried behind a failed answer, and every escalation still renders the scoped
+   `escalateToHuman` tool call with the CNIC/card/other-bookings exclusion list) — not
+   rebuilt into a separate screen, since it already satisfied §3 in full.
+   `data/ai/landmarks.js` is the hand-curated collection §3 calls for (name, region,
+   elevation, blurb, facts, related tours, access notes), seeded from names/elevations
+   already real elsewhere in the app (e.g. Khunjerab Pass's "4,693 m" already lived in
+   `kkh`'s `meta` string) rather than invented fresh. `AiContext.jsx`'s `FORECASTS`/
+   `ROADS` lookup tables (used by the chatbot's `getForecast`/`getRoadStatus` tool
+   calls) now carry a `landmarkId` cross-reference into that collection instead of
+   staying two silently-parallel sets of place names — `Map.jsx` is a stylized,
+   schematic SVG pin layout on 0–100 relative `coords`, deliberately not a real
+   geographic projection, so this stayed frontend-only with **no new mapping-library
+   dependency** (consistent with the tech-stack rule against adding one silently).
+   `Geofence.jsx` implements the exact 4-state permission machine (`prompt`/`granted`/
+   `denied`/`unavailable`) as an honestly-labeled simulation with real buttons, not a
+   call to the real browser geolocation/permissions API — that would pop a native
+   Chrome permission dialog, which (like a JS `alert()`) blocks automated interaction
+   and isn't something this app can honestly back with a real signal anyway; `denied`
+   never auto-re-prompts, only an explicit "Try again" moves it back to `prompt`, and
+   there is no public-post control at all (satisfying "never posts publicly by
+   default" the simplest honest way — not offering the control, rather than a flag
+   defaulted off).
+   `Weather.jsx` is operator-facing despite sitting under the `ai/` route prefix (§5
+   files the screen there; the spec has the operator, not the traveller, deciding).
+   Making its `cancel` decision genuinely run "the same `cancelBooking` action... no
+   separate weather-refund code path" (§3) surfaced a real constraint: `BookingContext`
+   only ever held bookings created live this session, so nothing existed for a demo
+   operator to cancel. Fixed by seeding exactly one real `BookingContext` booking
+   (`SFR-2026-0814-5521`, matching `VendorContext.SEED_LEDGER`'s `LG-4003` row — picked
+   because `LG-4002`/`LG-4004` were already touched by the fraud/dispute demos, `LG-4003`
+   wasn't) — the one deliberate exception to "every booking is created by a real
+   checkout." `cancelBooking`'s signature grew one optional parameter,
+   `cancelBooking(ref, reason, overridePct = null)`, so a caller that already knows the
+   correct rate (`Weather.jsx` reads `policy.weatherRefundPct` live from `AdminContext`
+   at the moment of the decision — `BookingContext` has no access to `AdminContext`,
+   which nests inside `AiProvider`, not outside it) can supply it directly instead of
+   this function deriving one from `reason`/the listing's own tier — still the one
+   ordinary action, just one more optional argument. `AiContext.decideWeatherAlert`
+   calls this and `VendorContext.reverseLedger` directly (both are ancestors of
+   `AiProvider` in `main.jsx`'s tree, so this is a same-provider call, not brokered
+   through a page) for the `cancel` branch only; `proceed`/`postpone`, and the
+   `Countdown`-driven auto-postpone on a blown decision window, never touch
+   booking/ledger state.
+   Verified in-browser end to end: Map → Landmark (real facts + a live-priced related
+   tour link) → Geofence's full `prompt`→`grant`→check-in path (itinerary-stop-reached
+   effect, mock emergency-contact notify, confirmed no public-post control exists) and,
+   separately, `prompt`→`deny` (confirmed no auto-re-prompt) and `unavailable` (check-in
+   correctly blocked with a captioned reason) → Weather: confirmed the countdown and
+   refund-rate copy read live `policy.weatherDecisionHours`/`weatherRefundPct`, then
+   cross-checked by switching to admin, dropping `weatherRefundPct` to 50% in Config,
+   and confirming — without a page reload — the Cancel button's label and computed
+   amount updated to match; executed the cancel and confirmed `LG-4003` actually flips
+   to `reversed` on the admin Ledger screen; separately tested `postpone` (blue `info`
+   pill) on the second, unlinked demo alert. Zero console errors throughout. One small
+   visual bug was caught and fixed in this same pass: `Khunjerab Pass`'s map pin sat
+   close enough to the canvas's top edge (`coords.y: 8`) that its own marker clipped
+   against the card's `overflow-hidden` — moved to `y: 14`.
+   This closes out the last module 08 gap — see the "Build strategy" note at the top of
+   this file: the frontend-first phase across all 9 modules (§5's full route table) is
+   now complete. What's genuinely left is real backend work (§8 item 8, below) plus the
+   smaller, previously-flagged non-blocking gaps: route guards, and the seeded-vs-live
+   Analytics series noted throughout this section.
 7. ~~**Module 09 (admin console)**: console, kyc, moderation, ledger, payout-batch,
    disputes, fraud, analytics, config, audit~~ — **done, client-side only.** All 10
    routes are wired. Added `AdminContext` (§7 three-file split — `adminRole` in

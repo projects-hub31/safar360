@@ -9,8 +9,13 @@ import StatusPill from '../../components/ui/StatusPill';
 import ChoiceCard from '../../components/ui/ChoiceCard';
 import EmptyState from '../../components/ui/EmptyState';
 
-export default function Product() {
-  const { id } = useParams();
+// Keyed by `id` from the parent below so navigating from one product straight
+// to another (same route, different param) remounts this component instead
+// of reusing it — React Router doesn't remount on a param-only change, and
+// this component's `variantId`/`added` state must not carry over from the
+// previous product (§7: prefer a remount-via-key over an effect that resets
+// state on a changed prop).
+function ProductView({ id }) {
   const navigate = useNavigate();
   const { formatMoney } = useApp();
   const { stock, addToCart } = useShop();
@@ -103,4 +108,9 @@ export default function Product() {
       </div>
     </div>
   );
+}
+
+export default function Product() {
+  const { id } = useParams();
+  return <ProductView key={id} id={id} />;
 }

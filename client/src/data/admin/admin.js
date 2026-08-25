@@ -170,6 +170,13 @@ export const PLATFORM_LEDGER_EXTRA = [
   { id: 'plr-2', kind: 'commission', ref: 'ORD-2026-0812-0091', party: 'Karakoram Gear Co.', label: 'Trekking pole set ×2, insulated jacket', gross: 43800, rate: 0.12, commission: 5256, net: 38544, state: 'accrued' },
   { id: 'plr-3', kind: 'referral', ref: 'SFR-2026-0805-3321', party: 'Amna Sheikh', label: 'Referral — Skardu & Deosai booking', gross: 156900, rate: 0.04, commission: 6276, net: 6276, state: 'pending' },
   { id: 'plr-4', kind: 'referral', ref: 'SFR-2026-0718-9903', party: 'Bilal Yousaf', label: 'Referral — Hunza & Attabad Lake booking', gross: 113250, rate: 0.04, commission: 4530, net: 4530, state: 'released' },
+  // plr-7/plr-8 added for the influencer Referrals screen (§6 07 social) —
+  // one real Amna Sheikh row (plr-3) was too thin to demo more than one
+  // ledger state. Kept in this one shared array rather than a second seed,
+  // per CLAUDE.md §6's "same shared ledger rows" requirement — these also
+  // show up on this admin Ledger screen, which is intended, not a leak.
+  { id: 'plr-7', kind: 'referral', ref: 'SFR-2026-0821-7734', party: 'Amna Sheikh', label: 'Referral — Naltar Valley Ski Weekend booking', gross: 45000, rate: 0.04, commission: 1800, net: 1800, state: 'accruing' },
+  { id: 'plr-8', kind: 'referral', ref: 'SFR-2026-0710-1182', party: 'Amna Sheikh', label: 'Referral — Fairy Meadows Trek booking', gross: 68000, rate: 0.04, commission: 2720, net: 2720, state: 'released' },
   { id: 'plr-5', kind: 'payout', ref: 'PB-2026-0801', party: 'Baltistan Trails', label: 'Payout batch PB-2026-0801', gross: 210500, rate: 0, commission: 0, net: 210500, state: 'released' },
   { id: 'plr-6', kind: 'commission', ref: 'SFR-2026-0809-8871', party: 'Karakoram Expeditions', label: 'Hunza & Attabad Lake · 4 seats — under dispute dp-1', gross: 226500, rate: 0.12, commission: 27180, net: 199320, state: 'held·dispute' },
 ];

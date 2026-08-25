@@ -197,6 +197,14 @@ export function ShopProvider({ children }) {
     })));
   };
 
+  // --- seller: manual restock (§6 seller-products) --------------------------
+  const restockVariant = (productId, variantId, amount) => {
+    setStock((current) => {
+      const key = stockKey(productId, variantId);
+      return { ...current, [key]: (current[key] ?? 0) + amount };
+    });
+  };
+
   // --- returns (§3/§6) -------------------------------------------------------
   // Reads the sub-order once from the surrounding closure (safe — this only
   // ever runs from an event handler, so it sees the latest render's state),
@@ -244,6 +252,7 @@ export function ShopProvider({ children }) {
     resolvePayment,
     notifyMe,
     advanceFulfilment,
+    restockVariant,
     submitReturn,
   };
 

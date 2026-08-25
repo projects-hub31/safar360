@@ -20,6 +20,21 @@ const FAIL_REASONS = {
   'sold-out': 'Someone completed payment for the last seat moments before you. Refunded automatically.',
 };
 
+// One seeded confirmed booking, matching VendorContext.SEED_LEDGER's `LG-4003`
+// row (gross 217200 = 3 seats × Rs 72,400, still `accruing` there rather than
+// already touched by the admin fraud/dispute demos) — added specifically so
+// the AI module's weather-override flow (§3) has a genuine booking to run the
+// real, shared `cancelBooking` action against, and a genuine linked ledger
+// row for `reverseLedger` to flip. Every other booking in this app is created
+// live by an actual checkout; this is the one deliberate exception, and it
+// exists purely to make "no separate weather-refund code path" true rather
+// than aspirational (see `AiContext.jsx`'s `decideWeatherAlert`).
+const SEEDED_BOOKING = {
+  ref: 'SFR-2026-0814-5521', tourId: 'kkh', title: 'Karakoram Highway to Khunjerab — 6 days',
+  seats: 3, total: 217200, method: 'card', state: 'confirmed', guests: [],
+  departureAt: Date.now() + 6 * 86400000, cancellationPolicy: 'standard', at: Date.now() - 5 * 86400000,
+};
+
 export function BookingProvider({ children }) {
   // Canonical, mutable seat availability — every screen that shows or changes
   // a seat count reads this, not the static seed in tours.js (§3: the server
@@ -28,7 +43,7 @@ export function BookingProvider({ children }) {
   const [avail, setAvail] = useState(() => ({ ...AVAILABILITY }));
   const [lock, setLock] = useState(null);
   const [paymentState, setPaymentState] = useState('idle');
-  const [bookings, setBookings] = useState([]);
+  const [bookings, setBookings] = useState(() => [SEEDED_BOOKING]);
   const [requests, setRequests] = useState([]);
   const [groups, setGroups] = useState([]);
 
@@ -258,15 +273,24 @@ export function BookingProvider({ children }) {
   };
 
   // --- cancellation --------------------------------------------------------
-  const cancelBooking = (ref, reason) => {
+  // `overridePct` lets a caller that already knows the correct refund rate
+  // (the AI module's weather-override flow reads `policy.weatherRefundPct`
+  // live from AdminContext, which this context has no access to — see
+  // `AiContext.decideWeatherAlert`) supply it directly, instead of this
+  // function computing one from `reason`/the listing's own policy tier. It's
+  // still the one, same, ordinary cancellation action every flow calls —
+  // no parallel weather-refund code path, just one extra optional parameter.
+  const cancelBooking = (ref, reason, overridePct = null) => {
     const booking = bookings.find((b) => b.ref === ref);
     if (!booking) return null;
-    const pct = reason === 'operator'
-      ? 100
-      : refundPct(
-        booking.cancellationPolicy,
-        booking.departureAt ? Math.max(0, (booking.departureAt - Date.now()) / 3600000) : 999,
-      );
+    const pct = overridePct !== null
+      ? overridePct
+      : reason === 'operator'
+        ? 100
+        : refundPct(
+          booking.cancellationPolicy,
+          booking.departureAt ? Math.max(0, (booking.departureAt - Date.now()) / 3600000) : 999,
+        );
     const amount = Math.round(booking.total * (pct / 100));
     setAvail((current) => ({ ...current, [booking.tourId]: (current[booking.tourId] ?? 0) + booking.seats }));
     setBookings((bs) => bs.map((b) => (b.ref === ref ? { ...b, state: 'cancelled', refundPct: pct, refundAmount: amount, cancelReason: reason } : b)));
