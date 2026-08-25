@@ -86,6 +86,17 @@ const Itinerary = lazy(() => import('./pages/ai/Itinerary'));
 const Saved = lazy(() => import('./pages/ai/Saved'));
 const Chatbot = lazy(() => import('./pages/ai/Chatbot'));
 
+const Console = lazy(() => import('./pages/admin/Console'));
+const AdminKyc = lazy(() => import('./pages/admin/Kyc'));
+const Moderation = lazy(() => import('./pages/admin/Moderation'));
+const Ledger = lazy(() => import('./pages/admin/Ledger'));
+const PayoutBatch = lazy(() => import('./pages/admin/PayoutBatch'));
+const Disputes = lazy(() => import('./pages/admin/Disputes'));
+const Fraud = lazy(() => import('./pages/admin/Fraud'));
+const AdminAnalytics = lazy(() => import('./pages/admin/Analytics'));
+const Config = lazy(() => import('./pages/admin/Config'));
+const Audit = lazy(() => import('./pages/admin/Audit'));
+
 function RouteFallback() {
   return (
     <div className="grid min-h-[40vh] place-items-center">
@@ -176,6 +187,16 @@ const App = () => {
           <Route path="ai/itinerary" element={<Itinerary />} />
           <Route path="ai/saved" element={<Saved />} />
           <Route path="ai/chatbot" element={<Chatbot />} />
+          <Route path="admin/console" element={<Console />} />
+          <Route path="admin/kyc" element={<AdminKyc />} />
+          <Route path="admin/moderation" element={<Moderation />} />
+          <Route path="admin/ledger" element={<Ledger />} />
+          <Route path="admin/payout-batch" element={<PayoutBatch />} />
+          <Route path="admin/disputes" element={<Disputes />} />
+          <Route path="admin/fraud" element={<Fraud />} />
+          <Route path="admin/analytics" element={<AdminAnalytics />} />
+          <Route path="admin/config" element={<Config />} />
+          <Route path="admin/audit" element={<Audit />} />
           <Route path="*" element={<ComingSoon />} />
         </Route>
       </Routes>

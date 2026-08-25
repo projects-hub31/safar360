@@ -3,8 +3,12 @@ import Logo from './Logo';
 import { useApp } from '../../context/app/useApp';
 import { useAuth } from '../../context/auth/useAuth';
 import { useShop } from '../../context/shop/useShop';
+import { useAdmin } from '../../context/admin/useAdmin';
 import { ROLES } from '../../context/auth/auth-context';
+import { ADMIN_ROLES, perms } from '../../context/admin/admin-context';
 import Button from '../ui/Button';
+
+const ADMIN_ROLE_LABELS = { super: 'Super admin', sub: 'Sub admin (queues only)', finance: 'Finance admin' };
 
 function navLinkClasses({ isActive }) {
   return [
@@ -22,6 +26,7 @@ export default function AppShell() {
   const { theme, toggleTheme, currency, setCurrency } = useApp();
   const { user, signOut, switchRole } = useAuth();
   const { cart } = useShop();
+  const { adminRole, setAdminRole } = useAdmin();
   const navigate = useNavigate();
   const cartCount = cart.reduce((n, l) => n + l.qty, 0);
 
@@ -29,6 +34,16 @@ export default function AppShell() {
   // traveller both get the traveller nav, since that's the only role with a
   // public, no-account surface.
   const activeRole = ROLES.find((r) => r.id === user?.role) || ROLES[0];
+
+  // Admin RBAC is enforced by absence (§3) — a nav item a sub/finance admin
+  // can't use simply isn't rendered, never a disabled/greyed one (that would
+  // advertise a capability they don't have). "Overview" always shows: every
+  // admin role passes perms().analytics.
+  const NAV_PERM_KEY = { KYC: 'kyc', Moderation: 'moderation', Finance: 'finance', Disputes: 'disputes', Config: 'config' };
+  const adminPerms = perms(adminRole);
+  const visibleNav = activeRole.id === 'admin'
+    ? activeRole.nav.filter(([label]) => !(label in NAV_PERM_KEY) || adminPerms[NAV_PERM_KEY[label]])
+    : activeRole.nav;
 
   const onSignOut = () => {
     signOut();
@@ -57,7 +72,7 @@ export default function AppShell() {
           </NavLink>
 
           <nav aria-label="Primary" className="flex min-w-0 flex-wrap gap-0.5">
-            {activeRole.nav.map(([label, to]) => (
+            {visibleNav.map(([label, to]) => (
               <NavLink key={label} to={to} className={navLinkClasses}>
                 {label}
               </NavLink>
@@ -134,11 +149,26 @@ export default function AppShell() {
                     aria-label="Switch role"
                     className="min-h-[34px] cursor-pointer rounded-lg border border-border-strong bg-raised px-2 text-xs font-semibold text-fg"
                   >
-                    {ROLES.filter((r) => r.id !== 'admin').map((r) => (
+                    {ROLES.map((r) => (
                       <option key={r.id} value={r.id}>{r.label}</option>
                     ))}
                   </select>
                 </label>
+                {activeRole.id === 'admin' && (
+                  <label className="hidden items-center gap-1.5 text-xs text-fg-muted md:flex">
+                    <span className="font-mono text-[10px] uppercase tracking-wider">Sub-role</span>
+                    <select
+                      value={adminRole}
+                      onChange={(e) => setAdminRole(e.target.value)}
+                      aria-label="Switch admin sub-role"
+                      className="min-h-[34px] cursor-pointer rounded-lg border border-border-strong bg-raised px-2 text-xs font-semibold text-fg"
+                    >
+                      {ADMIN_ROLES.map((r) => (
+                        <option key={r} value={r}>{ADMIN_ROLE_LABELS[r]}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <span className="hidden text-xs font-semibold text-fg-muted sm:inline">Hi, {user.name.split(' ')[0]}</span>
                 <Button variant="secondary" size="sm" onClick={onSignOut}>
                   Sign out

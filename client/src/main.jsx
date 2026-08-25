@@ -11,6 +11,7 @@ import { TransportProvider } from './context/transport/TransportContext.jsx'
 import { ShopProvider } from './context/shop/ShopContext.jsx'
 import { SocialProvider } from './context/social/SocialContext.jsx'
 import { AiProvider } from './context/ai/AiContext.jsx'
+import { AdminProvider } from './context/admin/AdminContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -26,7 +27,12 @@ createRoot(document.getElementById('root')).render(
                         for the planner/itinerary/chatbot, so it must nest under
                         BookingProvider — see AiContext.jsx. */}
                     <AiProvider>
-                      <App />
+                      {/* AdminProvider reads useVendor() internally (reverseLedger, on
+                          the one seeded row that links to a real vendor ledger row) —
+                          nests innermost, after every context it might ever need. */}
+                      <AdminProvider>
+                        <App />
+                      </AdminProvider>
                     </AiProvider>
                   </SocialProvider>
                 </ShopProvider>

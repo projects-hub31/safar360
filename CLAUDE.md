@@ -7,6 +7,17 @@ fraud review. This file is the ground truth for building it — extracted from a
 of the client-supplied wireframe deliverable and kept in sync with what actually exists
 in `client/` and `server/`.
 
+**Build strategy — frontend first, backend second.** All 9 modules get built
+client-side against mock data/context (the pattern already used by modules 01–05 and the
+traveller-facing slices of 06–08, §7/§8) before any server work starts. Do not jump to
+Mongoose models, routes, or a real database mid-way through the frontend pass — finish
+the UI for every module (including 09/admin, and the remaining seller/influencer/AI
+screens listed as gaps in §8) first, so the state machines get fully worked out in the UI
+layer first. Only once the frontend is complete across all 9 modules does work move to
+§4/§8-item-7 (server: Mongoose models, real routes, swapping mocked context actions for
+real `fetch()` calls). This is a deliberate, explicit instruction from the user — don't
+silently start backend work while frontend modules are still outstanding.
+
 **Source wireframes:** `~/Downloads/genie(new project)/Safar360 Complete Wire Frames/`
 (`index.html`, `safar360-app.html`, `safar360-design-system.html`). These are large
 (~1–5MB) self-contained bundles — a custom packer stores gzip+base64 modules inside a
@@ -1477,11 +1488,65 @@ Given what's already scaffolded, the natural next slices are:
    same lever as `BookingContext.forceOutcome`); the influencer-only money screens of
    social (`collab`, `referrals`, `campaigns`); the AI module's `escalation` (folded
    into the chatbot's inline escalation banner rather than a separate screen),
-   `map`/`landmark`/`geofence`/`weather`; and all of module 09 (admin) — `SocialContext`
-   does export `REPORT_REASONS`/`CONTENT_STATES` written to be admin's own future
-   import, not a social-only copy, precisely so that module doesn't have to re-derive
-   the registry.
-7. **Server**: stand up Mongoose models for the entities in §4 before wiring routes, so
+   `map`/`landmark`/`geofence`/`weather`. Module 09 (admin) is now built — see item 7
+   below — and does import `SocialContext`'s `REPORT_REASONS`/`CONTENT_STATES` rather
+   than redefining them, exactly as this note originally anticipated.
+7. ~~**Module 09 (admin console)**: console, kyc, moderation, ledger, payout-batch,
+   disputes, fraud, analytics, config, audit~~ — **done, client-side only.** All 10
+   routes are wired. Added `AdminContext` (§7 three-file split — `adminRole` in
+   `super`/`sub`/`finance`, the exact `perms()` matrix from §3, the 7-field `policy`
+   object with `savePolicy`, and an append-only `audit` log every action below writes
+   to) plus two new shared `components/ui/` primitives spec calls for (`DataTable` —
+   the KYC/moderation/audit/payout-batch shared shell, responsive table↔stacked-card at
+   Tailwind's `lg`; `KpiCard`/`BarChart` — the KPI/chart shells, max 2 series, no pie).
+   `AppShell`'s role switcher previously excluded `admin` outright (nav pointed at
+   `ComingSoon`) — that exclusion is removed, and a "Sub-role" picker now appears only
+   when acting as admin; the nav itself filters live through `perms()`, confirmed
+   in-browser to literally disappear (not grey out) items per role.
+   **The single-demo-account problem, resolved per queue**: KYC, fraud, and disputes
+   are seeded multi-actor data (`data/admin/admin.js`), the same pattern
+   `VendorContext.SEED_LEDGER` already established, since one logged-in demo account
+   can't produce a real multi-vendor/multi-traveller queue. Moderation is fully
+   live — it reads `SocialContext`'s real `posts`, and this pass added `reports` (per-
+   report records, for reason tallies like "Spam ×2"), `moderateContent` (decision
+   buttons generated from `CONTENT_STATES` itself — an illegal move is never offered),
+   and `appealPost` (one appeal, enforced-by-name to require a different reviewer than
+   the original decision). The Ledger screen merges `VendorContext.ledger` (this
+   session's one real vendor, live and mutable) with seeded `PLATFORM_LEDGER_EXTRA`
+   rows for every other party a platform ledger would carry. `VendorContext` gained a
+   `reverseLedger` action (§3's named commission-clawback action, previously missing —
+   only `setLedgerRowState` existed); fraud's Refund and a dispute's full-refund
+   resolution call it for real on the one row each links to (`fr-1`/`dp-1` →
+   `LG-4002`), everything else is a self-contained seeded mutation, documented inline
+   rather than silently blurred. Payout batch's two-step approval (preparer ≠ approver,
+   even same role) is demonstrated by name entry against a fixed `ADMIN_ROSTER`, since
+   there's no real multi-admin auth — a same-name approval attempt is refused and
+   logged to audit exactly like a real refusal would be.
+   Verified in-browser end-to-end this session (Chrome extension available, unlike
+   module 06–08's pass): signed in, switched to admin, confirmed nav/KPI tiles change
+   shape (not greyed) across `super`/`sub`/`finance`; KYC approve + reject-with-reason;
+   Moderation remove-with-reason → appeal refused for the same reviewer → appeal
+   succeeded for a different one; Config's `fraudThreshold` slider live-recalculating
+   which seeded fraud rows would hold, saved, and confirmed the committed value on both
+   the Console KPI tile and a fresh page load; Fraud's Refund action → confirmed for
+   real on the vendor's own Payouts screen (`LG-4002` moved from pending to reversed,
+   netted as a negative line) after switching role back to operator; Disputes'
+   mandatory-note + refund resolution, with "Not recorded" drawn honestly for the two
+   timeline events that never happened (Law 2). Two real bugs were caught and fixed in
+   this pass, same register as the `payShare`/`submitReturn` bugs above: the SLA
+   countdown on the KYC queue rendered a fractional-second value
+   (`17:53:59.19199999999546`) because `Countdown` needs a whole-second duration and
+   `slaSeconds()` wasn't flooring it; and Console's "above the live fraud threshold" KPI
+   was comparing against a hardcoded `0.75` instead of reading `policy.fraudThreshold`,
+   silently defeating the point of a *live* config-driven KPI. Ledger, Payout batch, and
+   Analytics were built to the same conventions but not walked end-to-end in-browser
+   this session — a follow-up pass should confirm those three the way the rest of this
+   entry's screens were.
+   **Not done**: no real backend (as with every module so far — see the file-opening
+   "Build strategy" note), no route guards, and the admin `Analytics` screen's monthly
+   series/funnel are seeded (same honest framing as vendor `Analytics.jsx` — no real
+   multi-month platform history exists yet to derive one from).
+8. **Server**: stand up Mongoose models for the entities in §4 before wiring routes, so
    the state machines in §3 have somewhere real to live — pay particular attention to
    putting commission rate on Vendor/Seller (not a global constant) and booking mode /
    cancellation policy on Listing from the start (the client already models both on
@@ -1490,7 +1555,7 @@ Given what's already scaffolded, the natural next slices are:
    the same shape a real API call would (§7) — replacing their bodies with `fetch()`
    calls once routes exist should not require changing any calling component.
 
-8. ~~**Client-side restructure**: one `pages`/`components`/`context`/`data`
+9. ~~**Client-side restructure**: one `pages`/`components`/`context`/`data`
    per-module convention, plus route-level code-splitting~~ — **done.** `context/`
    was flat (23 files, all 8 modules' `*-context.js`/`*Context.jsx`/`use*.js` trios in
    one directory) — split into `context/<module>/`, mirroring `pages/`'s existing

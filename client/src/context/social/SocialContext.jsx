@@ -1,14 +1,22 @@
 import { useRef, useState } from 'react';
 import { SocialContext } from './social-context';
-import { AUTO_REVIEW_AT, FAIL_MESSAGE_TRIGGER } from './social-context';
+import { AUTO_REVIEW_AT, FAIL_MESSAGE_TRIGGER, CONTENT_STATES } from './social-context';
 import { SEED_POSTS, SEED_THREADS, AUTHORS } from '../../data/social/social';
 
 // Module 07, traveller-facing slice (feed, composer, post detail, profile,
-// chats, thread, report). Campaigns/referrals (influencer-only money screens)
-// and the admin side of moderation are out of scope for this pass — see
-// CLAUDE.md's module 07 build-order note.
+// chats, thread, report), plus the two actions (moderateContent, appealPost)
+// module 09's admin moderation queue calls — this stays the one place
+// CONTENT_STATES actually gets mutated, same reuse pattern as AuthContext's
+// shared setKycStatus. Campaigns/referrals (influencer-only money screens)
+// are still out of scope — see CLAUDE.md's module 07 build-order note.
 export function SocialProvider({ children }) {
   const [posts, setPosts] = useState(SEED_POSTS);
+  // Per-report records (postId, reasonId, reporterId, at) — reportPost() used
+  // to only bump an aggregate reportCount, which is enough for the traveller-
+  // facing pass but not enough for a moderation queue to tally reasons
+  // ("Spam ×2", §6 admin/moderation) or to honour "reporters are never
+  // disclosed to the author" as a real per-report fact rather than a promise.
+  const [reports, setReports] = useState([]);
   const [threads, setThreads] = useState(SEED_THREADS);
   const [blocked, setBlocked] = useState(() => new Set(SEED_THREADS.filter((t) => t.blocked).map((t) => t.withId)));
   const [following, setFollowing] = useState(() => new Set(['karakoram-expeditions', 'amna-sheikh']));
@@ -64,10 +72,51 @@ export function SocialProvider({ children }) {
       const moderation = reportCount >= AUTO_REVIEW_AT ? 'under_review' : (p.moderation === 'live' ? 'reported' : p.moderation);
       return { ...p, reportCount, moderation, lastReportReason: reasonId };
     }));
+    setReports((rs) => rs.concat({ id: genId('rp'), postId, reasonId, reporterId: 'me', at: Date.now() }));
     if (alsoBlock) {
       const post = posts.find((p) => p.id === postId);
       if (post) blockAccount(post.authorId);
     }
+  };
+
+  // Admin moderation decision (module 09) — the ONE mutation path for a
+  // content state change, shared by the not-yet-built full admin queue and
+  // anything else that ever needs to move a post through CONTENT_STATES, same
+  // spirit as AuthContext's shared setKycStatus. `action` must be a legal next
+  // state for the post's CURRENT state per CONTENT_STATES (§3) — the admin
+  // screen is expected to only ever offer buttons already filtered through
+  // that same table, but this still refuses an illegal move defensively
+  // rather than trusting the caller. `removed`/`restored` require a reason
+  // (§3); dismissing back to `live` from `reported` does not.
+  const moderateContent = (postId, action, reason, moderatorName) => {
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return { ok: false, error: 'Post not found.' };
+    const legal = CONTENT_STATES[post.moderation] || [];
+    if (!legal.includes(action)) return { ok: false, error: `"${action}" isn't a legal move from "${post.moderation}".` };
+    if ((action === 'removed' || action === 'restored') && !reason) {
+      return { ok: false, error: 'A reason is required for this decision.' };
+    }
+    setPosts((ps) => ps.map((p) => (p.id !== postId ? p : {
+      ...p, moderation: action, lastDecisionReason: reason || null, lastModeratorName: moderatorName || null,
+      appealed: action === 'removed' ? false : p.appealed,
+    })));
+    return { ok: true };
+  };
+
+  // One appeal only, and it must go to a DIFFERENT moderator than whoever
+  // made the original decision (§3) — enforced by name here since this app
+  // has no real multi-admin identity system yet (single demo account, same
+  // limitation the payout-batch two-step approval works around).
+  const appealPost = (postId, reviewerName) => {
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return { ok: false, error: 'Post not found.' };
+    if (post.moderation !== 'removed') return { ok: false, error: 'Only a removed post can be appealed.' };
+    if (post.appealed) return { ok: false, error: 'This decision has already been appealed once.' };
+    if (post.lastModeratorName && reviewerName && post.lastModeratorName === reviewerName) {
+      return { ok: false, error: `${reviewerName} made the original decision — an appeal needs a different reviewer.` };
+    }
+    setPosts((ps) => ps.map((p) => (p.id !== postId ? p : { ...p, moderation: 'restored', appealed: true, lastDecisionReason: 'Appeal upheld', lastModeratorName: reviewerName || null })));
+    return { ok: true };
   };
 
   // --- follow / block ---------------------------------------------------------
@@ -154,8 +203,9 @@ export function SocialProvider({ children }) {
   };
 
   const value = {
-    posts, threads, blocked, following,
+    posts, reports, threads, blocked, following,
     toggleLike, toggleSave, createPost, addComment, reportPost,
+    moderateContent, appealPost,
     toggleFollow, blockAccount, unblockAccount,
     sendMessage, retryMessage, startThread,
     authorOf,

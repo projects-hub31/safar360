@@ -127,13 +127,22 @@ export function VendorProvider({ children }) {
   const setLedgerRowState = (id, state) =>
     setLedger((rows) => rows.map((r) => (r.id === id ? { ...r, state } : r)));
 
+  // Claws back an already-accrued commission (§3 Ledger — "a refund reverses
+  // the accrual with it"). Same action a weather cancellation, a dispute
+  // refund, or a fraud-review refund all call — never a parallel refund path.
+  // Reused by the admin console (module 09) on this vendor's own rows; admin's
+  // other, seeded, multi-vendor rows mirror this exact state transition
+  // locally rather than reaching into a specific vendor's context (see
+  // CLAUDE.md's module 09 note on the single-demo-account limitation).
+  const reverseLedger = (id) => setLedgerRowState(id, 'reversed');
+
   const value = {
     subscription, subscribe, cancelSubscription, simulateChargeFailure,
     retryCharge, exhaustRetries, onGraceExpire, graceDays: GRACE_DAYS,
     listings, createDraftListing, updateListing, addPhoto, removePhoto, setCoverPhoto,
     publishGate, publishListing,
     addDeparture, setDepartureSeats, toggleBlackout,
-    ledger, setLedgerRowState,
+    ledger, setLedgerRowState, reverseLedger,
   };
 
   return <VendorContext.Provider value={value}>{children}</VendorContext.Provider>;
