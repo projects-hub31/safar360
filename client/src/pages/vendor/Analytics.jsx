@@ -1,5 +1,5 @@
-import { useVendor } from '../../context/useVendor';
-import { useApp } from '../../context/useApp';
+import { useVendor } from '../../context/vendor/useVendor';
+import { useApp } from '../../context/app/useApp';
 import Card from '../../components/ui/Card';
 
 // Seeded demo series — same honest framing as Dashboard's DEMO_KPIS: this

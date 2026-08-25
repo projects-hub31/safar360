@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { useShop } from '../../context/useShop';
-import { PRODUCTS, SELLERS, CATEGORIES, stockKey } from '../../data/traveler/gear';
+import { useShop } from '../../context/shop/useShop';
+import { PRODUCTS, SELLERS, CATEGORIES, stockKey } from '../../data/shop/gear';
 import ProductCard from '../../components/shop/ProductCard';
 import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';

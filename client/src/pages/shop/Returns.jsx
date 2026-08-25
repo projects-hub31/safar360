@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useShop } from '../../context/useShop';
-import { RETURN_REASONS, RETURN_SHIPPING_FEE } from '../../context/shop-context';
+import { useApp } from '../../context/app/useApp';
+import { useShop } from '../../context/shop/useShop';
+import { RETURN_REASONS, RETURN_SHIPPING_FEE } from '../../context/shop/shop-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import ChoiceCard from '../../components/ui/ChoiceCard';

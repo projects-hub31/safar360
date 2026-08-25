@@ -1,7 +1,7 @@
-import { useApp } from '../../context/useApp';
-import { useAuth } from '../../context/useAuth';
-import { useTransport } from '../../context/useTransport';
-import { LEAD_WINDOW_HOURS } from '../../context/transport-context';
+import { useApp } from '../../context/app/useApp';
+import { useAuth } from '../../context/auth/useAuth';
+import { useTransport } from '../../context/transport/useTransport';
+import { LEAD_WINDOW_HOURS } from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

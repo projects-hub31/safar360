@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../../context/useAuth';
-import { useSocial } from '../../context/useSocial';
+import { useAuth } from '../../context/auth/useAuth';
+import { useSocial } from '../../context/social/useSocial';
 import PostCard from '../../components/social/PostCard';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

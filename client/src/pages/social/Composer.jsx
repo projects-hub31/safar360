@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSocial } from '../../context/useSocial';
-import { POST_TYPES, POST_MAX_CHARS, HASHTAG_RE } from '../../context/social-context';
+import { useSocial } from '../../context/social/useSocial';
+import { POST_TYPES, POST_MAX_CHARS, HASHTAG_RE } from '../../context/social/social-context';
 import { TOURS } from '../../data/traveler/tours';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';

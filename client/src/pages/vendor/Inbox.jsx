@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useBooking } from '../../context/useBooking';
+import { useApp } from '../../context/app/useApp';
+import { useBooking } from '../../context/booking/useBooking';
 import Card from '../../components/ui/Card';
 import StatusPill from '../../components/ui/StatusPill';
 import EmptyState from '../../components/ui/EmptyState';
 import Countdown from '../../components/ui/Countdown';
-import { REQUEST_WINDOW_HOURS } from '../../context/booking-context';
+import { REQUEST_WINDOW_HOURS } from '../../context/booking/booking-context';
 
 const TABS = [
   { id: 'pending', label: 'Waiting' },

@@ -1,10 +1,10 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import Logo from './Logo';
-import { useApp } from '../context/useApp';
-import { useAuth } from '../context/useAuth';
-import { useShop } from '../context/useShop';
-import { ROLES } from '../context/auth-context';
-import Button from './ui/Button';
+import { useApp } from '../../context/app/useApp';
+import { useAuth } from '../../context/auth/useAuth';
+import { useShop } from '../../context/shop/useShop';
+import { ROLES } from '../../context/auth/auth-context';
+import Button from '../ui/Button';
 
 function navLinkClasses({ isActive }) {
   return [
@@ -15,7 +15,10 @@ function navLinkClasses({ isActive }) {
   ].join(' ');
 }
 
-export default function TravelerLayout() {
+// Shared shell for every role, not just the traveller — nav, role switcher,
+// currency/theme toggles, cart. Named AppShell (not TravelerLayout) because
+// operator/transport/property/seller/influencer/admin all mount through it too.
+export default function AppShell() {
   const { theme, toggleTheme, currency, setCurrency } = useApp();
   const { user, signOut, switchRole } = useAuth();
   const { cart } = useShop();

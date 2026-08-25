@@ -4,7 +4,7 @@ import {
   SEED_VEHICLES, SEED_PERMITS, SEED_ROUTES, SEED_ROOMS, SEED_MENU, SEED_LEADS,
   LEAD_WINDOW_HOURS, roomRate,
 } from './transport-context';
-import { DECLINE_CARD, FRAUD_CARD, FRAUD_AMOUNT_THRESHOLD, refFor } from './booking-context';
+import { DECLINE_CARD, FRAUD_CARD, FRAUD_AMOUNT_THRESHOLD, refFor } from '../booking/booking-context';
 
 const FAIL_ROOM_REASONS = {
   failed: 'Your card was declined by the issuing bank. Nothing was charged.',

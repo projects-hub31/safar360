@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useSocial } from '../../context/useSocial';
+import { useSocial } from '../../context/social/useSocial';
 import { TOURS } from '../../data/traveler/tours';
 import StatusPill from '../ui/StatusPill';
 

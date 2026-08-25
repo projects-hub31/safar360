@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useSocial } from '../../context/useSocial';
+import { useSocial } from '../../context/social/useSocial';
 import PostCard from '../../components/social/PostCard';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';

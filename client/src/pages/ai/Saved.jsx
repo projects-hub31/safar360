@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useApp } from '../../context/useApp';
-import { useAi } from '../../context/useAi';
+import { useApp } from '../../context/app/useApp';
+import { useAi } from '../../context/ai/useAi';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';

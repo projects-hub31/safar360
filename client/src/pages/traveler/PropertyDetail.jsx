@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useAuth } from '../../context/useAuth';
-import { useTransport } from '../../context/useTransport';
-import { roomRate } from '../../context/transport-context';
+import { useApp } from '../../context/app/useApp';
+import { useAuth } from '../../context/auth/useAuth';
+import { useTransport } from '../../context/transport/useTransport';
+import { roomRate } from '../../context/transport/transport-context';
 import { seatPill } from '../../data/traveler/tours';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

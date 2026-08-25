@@ -11,7 +11,7 @@ import {
   FRAUD_AMOUNT_THRESHOLD,
   refFor,
 } from './booking-context';
-import { AVAILABILITY, refundPct } from '../data/traveler/tours';
+import { AVAILABILITY, refundPct } from '../../data/traveler/tours';
 
 const FAIL_REASONS = {
   failed: 'Your card was declined by the issuing bank. Nothing was charged.',

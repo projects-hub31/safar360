@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useApp } from '../../context/useApp';
-import { useTransport } from '../../context/useTransport';
+import { useApp } from '../../context/app/useApp';
+import { useTransport } from '../../context/transport/useTransport';
 import {
   FEATURED_REGIONS, FEATURED_MIN_DAYS, FEATURED_MAX_DAYS, FEATURED_STEP_DAYS,
   SPONSORED_CAP_PER_10, SEED_SPONSORED_SOLD,
-} from '../../context/transport-context';
+} from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import ChoiceCard from '../../components/ui/ChoiceCard';

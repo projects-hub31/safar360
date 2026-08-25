@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/useAuth';
-import { useTransport } from '../../context/useTransport';
+import { useAuth } from '../../context/auth/useAuth';
+import { useTransport } from '../../context/transport/useTransport';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';
 import Stepper from '../../components/ui/Stepper';

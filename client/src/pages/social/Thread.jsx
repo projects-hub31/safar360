@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useSocial } from '../../context/useSocial';
+import { useSocial } from '../../context/social/useSocial';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';
 import EmptyState from '../../components/ui/EmptyState';

@@ -1,4 +1,4 @@
-import { useApp } from '../../context/useApp';
+import { useApp } from '../../context/app/useApp';
 import { TOURS } from '../../data/traveler/tours';
 import TourCard from '../../components/traveler/TourCard';
 import EmptyState from '../../components/ui/EmptyState';

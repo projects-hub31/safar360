@@ -1,4 +1,4 @@
-import { useAuth } from '../../context/useAuth';
+import { useAuth } from '../../context/auth/useAuth';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useSocial } from '../../context/useSocial';
+import { useSocial } from '../../context/social/useSocial';
 import Card from '../../components/ui/Card';
 import StatusPill from '../../components/ui/StatusPill';
 import EmptyState from '../../components/ui/EmptyState';

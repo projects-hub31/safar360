@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSocial } from '../../context/useSocial';
+import { useSocial } from '../../context/social/useSocial';
 import PostCard from '../../components/social/PostCard';
 import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';

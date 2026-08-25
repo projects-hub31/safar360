@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useSocial } from '../../context/useSocial';
-import { REPORT_REASONS } from '../../context/social-context';
+import { useSocial } from '../../context/social/useSocial';
+import { REPORT_REASONS } from '../../context/social/social-context';
 import ChoiceCard from '../../components/ui/ChoiceCard';
 import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';

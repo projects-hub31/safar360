@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useAuth } from '../../context/useAuth';
-import { useTransport } from '../../context/useTransport';
-import { daysLeftStatus, vehicleVisible } from '../../context/transport-context';
+import { useAuth } from '../../context/auth/useAuth';
+import { useTransport } from '../../context/transport/useTransport';
+import { daysLeftStatus, vehicleVisible } from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';

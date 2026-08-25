@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
 import { AiContext } from './ai-context';
 import { ESCALATE_MONEY_KEYWORDS, ESCALATE_SAFETY_KEYWORDS, BOOKING_REF_RE } from './ai-context';
-import { TOURS } from '../data/traveler/tours';
-import { useBooking } from './useBooking';
+import { TOURS } from '../../data/traveler/tours';
+import { useBooking } from '../booking/useBooking';
 
 const FORECASTS = {
   hunza: { tempC: 14, condition: 'Partly cloudy', windKmh: 18 },

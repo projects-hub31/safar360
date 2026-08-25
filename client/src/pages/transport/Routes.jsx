@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useApp } from '../../context/useApp';
-import { useTransport } from '../../context/useTransport';
+import { useApp } from '../../context/app/useApp';
+import { useTransport } from '../../context/transport/useTransport';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';

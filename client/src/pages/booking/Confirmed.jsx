@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useBooking } from '../../context/useBooking';
+import { useApp } from '../../context/app/useApp';
+import { useBooking } from '../../context/booking/useBooking';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import EmptyState from '../../components/ui/EmptyState';

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/useAuth';
-import { OTP_TTL_SECONDS, PARTNER_ROLES } from '../../context/auth-context';
+import { useAuth } from '../../context/auth/useAuth';
+import { OTP_TTL_SECONDS, PARTNER_ROLES } from '../../context/auth/auth-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Countdown from '../../components/ui/Countdown';

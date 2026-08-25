@@ -1,5 +1,5 @@
-import { useAuth } from '../../context/useAuth';
-import { useTransport } from '../../context/useTransport';
+import { useAuth } from '../../context/auth/useAuth';
+import { useTransport } from '../../context/transport/useTransport';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

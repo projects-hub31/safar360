@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useBooking } from '../../context/useBooking';
-import { useTransport } from '../../context/useTransport';
+import { useApp } from '../../context/app/useApp';
+import { useBooking } from '../../context/booking/useBooking';
+import { useTransport } from '../../context/transport/useTransport';
 import { TOURS } from '../../data/traveler/tours';
 import TourCard from '../../components/traveler/TourCard';
 import Button from '../../components/ui/Button';

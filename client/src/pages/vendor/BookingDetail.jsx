@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useBooking } from '../../context/useBooking';
-import { DECLINE_REASONS } from '../../context/vendor-context';
+import { useApp } from '../../context/app/useApp';
+import { useBooking } from '../../context/booking/useBooking';
+import { DECLINE_REASONS } from '../../context/vendor/vendor-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import SelectField from '../../components/ui/SelectField';
 import StatusPill from '../../components/ui/StatusPill';
 import Countdown from '../../components/ui/Countdown';
 import EmptyState from '../../components/ui/EmptyState';
-import { REQUEST_WINDOW_HOURS } from '../../context/booking-context';
+import { REQUEST_WINDOW_HOURS } from '../../context/booking/booking-context';
 
 function maskCnic(cnic) {
   const m = /^(\d{5})-(\d{7})-(\d)$/.exec(cnic);

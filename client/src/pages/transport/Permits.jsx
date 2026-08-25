@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useTransport } from '../../context/useTransport';
-import { daysLeftStatus, PERMIT_WARNING_DAYS } from '../../context/transport-context';
+import { useTransport } from '../../context/transport/useTransport';
+import { daysLeftStatus, PERMIT_WARNING_DAYS } from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';

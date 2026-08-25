@@ -1159,6 +1159,25 @@ a soft-lock requirement for a room the way it does for a tour seat.
 
 ## 7. Client conventions already established
 
+- **Folder structure — one convention, four directories**: `pages/`, `components/`,
+  `context/`, and `data/` are all split into the **same** per-module subfolders, named
+  after the module `id`s in §5's route table — `traveler`, `booking`, `identity`,
+  `vendor`, `transport`, `shop`, `social`, `ai`. A vendor screen is
+  `pages/vendor/*.jsx`; a vendor-specific composite (once one exists — today vendor
+  pages compose entirely from `ui/`) would live in `components/vendor/`; its state is
+  `context/vendor/` (`vendor-context.js` the raw `createContext` + constants,
+  `VendorContext.jsx` the provider, `useVendor.js` the hook — **every** module's
+  context follows this identical three-file split, never mixed into one file, because
+  mixing component + non-component exports in one module breaks Fast Refresh); its
+  seed data, if any, is `data/vendor/`. `context/app/` and `context/auth/` are
+  "modules" in this same sense too — global state with no screen of their own, not an
+  exception to the pattern. Two directories sit outside the per-module split on
+  purpose because every module consumes them, not just one: `components/ui/` (the
+  design-system primitive layer, §2) and `components/layout/` (`AppShell.jsx` +
+  `Logo.jsx` — the one shell every role mounts through; named `AppShell`, not
+  `TravelerLayout`, precisely because it isn't traveller-specific). A developer
+  looking for anything vendor-related has exactly one place to check per concern —
+  nothing module-specific lives loose at a directory root.
 - **Reusable UI primitives**: `client/src/components/ui/` — `Button`, `Card`,
   `ChoiceCard`, `Countdown`, `EmptyState`, `SelectField`, `StatusPill`, `Stepper`,
   `TextField`, `Toggle` (barrel export at `ui/index.js`). These implement the design
@@ -1194,7 +1213,7 @@ a soft-lock requirement for a room the way it does for a tour seat.
   (`auth-context.js`/`AuthContext.jsx`/`useAuth.js` — `user`, `signupRole`, the
   in-flight `pending` OTP/reset session, register/login/OTP/KYC actions, and a
   `switchRole`/`ROLES` role-switcher — a single demo account acting as every platform
-  actor, mirroring the wireframe's own role switcher; `TravelerLayout`'s nav/logo/
+  actor, mirroring the wireframe's own role switcher; `AppShell`'s nav/logo/
   cart-visibility all key off `ROLES.find(r => r.id === user?.role)`, not real
   multi-tenancy), `BookingContext` (`booking-context.js`/`BookingContext.jsx`/
   `useBooking.js` — the §3 payment/booking state machine: `avail` (the **canonical,
@@ -1290,12 +1309,21 @@ a soft-lock requirement for a room the way it does for a tour seat.
   unit, notification toggles) persist the same way directly in `Profile.jsx` under
   `s360-profile` rather than living in global context — promote them to `AppContext`
   only once another screen actually needs to read them.
-- **Layout**: `TravelerLayout.jsx` wraps traveller routes via a React Router `<Route
-  element={...}>` layout route; `ComingSoon.jsx` is the catch-all for unbuilt routes —
-  keep using this instead of a blank 404 as new modules come online.
-- **Mock data**: `client/src/data/traveler/tours.js` — static data module per domain
-  area while there's no backend yet. When wiring to the real API, replace the import
-  with a fetch/hook, keep the shape stable so components don't need rewrites.
+- **Layout**: `components/layout/AppShell.jsx` wraps every role's routes (not just
+  traveller's) via a single React Router `<Route element={...}>` layout route;
+  `pages/ComingSoon.jsx` is the catch-all for unbuilt routes — keep using this instead
+  of a blank 404 as new modules come online.
+- **Route-level code-splitting**: every page in `App.jsx` is a `React.lazy()` import
+  wrapped in one root `<Suspense>` — each screen ships as its own chunk (a few KB),
+  fetched on navigation instead of bloating the initial bundle. Add new routes the
+  same way (`const Screen = lazy(() => import('./pages/module/Screen'))`); a static
+  `import` at the top of `App.jsx` pulls that screen back into the eagerly-loaded main
+  chunk and defeats the point.
+- **Mock data**: `client/src/data/<module>/*.js` — static data modules (`data/traveler/
+  tours.js`, `data/shop/gear.js`, `data/social/social.js`) while there's no backend
+  yet, one per domain area, following the same per-module split as `pages/`/`context/`.
+  When wiring to the real API, replace the import with a fetch/hook, keep the shape
+  stable so components don't need rewrites.
 - **Images**: real destination photography lives in `client/src/assets/traveler/`
   (already sourced to match the wireframe's tour/property photos — Hunza, Fairy
   Meadows, Deosai, Skardu, Kalash, Gwadar, etc.). Prefer these over placeholders when
@@ -1322,7 +1350,7 @@ Given what's already scaffolded, the natural next slices are:
    register, login, otp, otp-exhausted, kyc, kyc-pending, kyc-approved, kyc-rejected.
    Added `AuthContext` (§7) with fully mocked register/login/OTP/KYC actions, the
    `Countdown` primitive (§2/§7), and `DocumentUpload` (`components/identity/`) for
-   the KYC uploader. `TravelerLayout`'s header is now auth-aware (Sign in ↔ Hi,
+   the KYC uploader. `AppShell`'s (then still named `TravelerLayout`) header is now auth-aware (Sign in ↔ Hi,
    {name}/Sign out) and Home's six actor tiles pre-select the matching role on
    `/identity/role` via router `state`, per §6's "arrived via a home-page actor tile"
    note. Verified in-browser end-to-end for both branches: a partner role
@@ -1382,7 +1410,8 @@ Given what's already scaffolded, the natural next slices are:
    released/reversed buckets, reversal shown as a negative netted line rather than a
    clawback). Also added: a `switchRole`/`ROLES` role-switcher in `AuthContext` (a
    single demo account acting as every actor, mirroring the wireframe's own role
-   switcher — not real multi-tenancy) and made `TravelerLayout` role-aware off it;
+   switcher — not real multi-tenancy) and made `AppShell` (then still named
+   `TravelerLayout`) role-aware off it;
    and — a real gap found while designing this module's booking-detail screen, which
    the spec requires to show masked CNIC — `TourDetail.jsx`'s request-to-book path
    never actually collected traveller name/CNIC before this pass. Fixed by carrying a
@@ -1460,6 +1489,31 @@ Given what's already scaffolded, the natural next slices are:
    reads them. `BookingContext`'s mock functions were deliberately written to return
    the same shape a real API call would (§7) — replacing their bodies with `fetch()`
    calls once routes exist should not require changing any calling component.
+
+8. ~~**Client-side restructure**: one `pages`/`components`/`context`/`data`
+   per-module convention, plus route-level code-splitting~~ — **done.** `context/`
+   was flat (23 files, all 8 modules' `*-context.js`/`*Context.jsx`/`use*.js` trios in
+   one directory) — split into `context/<module>/`, mirroring `pages/`'s existing
+   per-module layout (§7's new "Folder structure" bullet has the full convention).
+   `components/TravelerLayout.jsx` — actually the shared shell every role mounts
+   through, not traveller-only, per its own role-switcher logic — renamed to
+   `components/layout/AppShell.jsx` (moved alongside `Logo.jsx`, the other genuine
+   cross-module component) so the name stops implying traveller-only scope.
+   `data/traveler/gear.js` and `data/traveler/social.js` moved to `data/shop/` and
+   `data/social/` respectively (they're that module's seed data, not traveller's;
+   `tours.js` stayed in `data/traveler/` — it genuinely is discovery's own catalog,
+   reused by other modules the same way `TOURS`/`AVAILABILITY` always were). Three
+   unreferenced Vite-boilerplate assets (`hero.png`, `react.svg`, `vite.svg` — zero
+   imports, confirmed by grep) were removed. Separately, `App.jsx`'s 66 static page
+   imports became `React.lazy()` + one root `<Suspense>` — the production build had
+   been flagging one ~530KB/145KB-gzip JS chunk; after this it's a ~296KB/94.5KB-gzip
+   shared chunk plus one small (0.7–14KB) chunk per screen, fetched on navigation
+   instead of all up front. Verified via a clean `eslint` pass and a clean production
+   `vite build` (both re-run after the move, not just before it) — in-browser
+   click-through wasn't available this session (Chrome extension declined), so a
+   future session should still confirm route transitions render their `Suspense`
+   fallback correctly and no screen regressed visually, even though the build/lint
+   passes prove every import resolves and nothing is dead code.
 
 Do not build all 9 modules' UI against mock data first and wire the backend later "in
 bulk" — the payment/inventory/moderation state machines are the actual product, and

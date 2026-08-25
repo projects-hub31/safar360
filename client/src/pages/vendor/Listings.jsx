@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/useAuth';
-import { useVendor } from '../../context/useVendor';
-import { useApp } from '../../context/useApp';
+import { useAuth } from '../../context/auth/useAuth';
+import { useVendor } from '../../context/vendor/useVendor';
+import { useApp } from '../../context/app/useApp';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';

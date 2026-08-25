@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useShop } from '../../context/useShop';
-import { CHECKOUT_SESSION_MINUTES } from '../../context/shop-context';
+import { useApp } from '../../context/app/useApp';
+import { useShop } from '../../context/shop/useShop';
+import { CHECKOUT_SESSION_MINUTES } from '../../context/shop/shop-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';

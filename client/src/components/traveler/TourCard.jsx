@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useBooking } from '../../context/useBooking';
+import { useApp } from '../../context/app/useApp';
+import { useBooking } from '../../context/booking/useBooking';
 import { seatPill } from '../../data/traveler/tours';
 import StatusPill from '../ui/StatusPill';
 import WishlistButton from './WishlistButton';

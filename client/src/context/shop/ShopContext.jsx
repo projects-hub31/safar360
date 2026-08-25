@@ -6,7 +6,7 @@ import {
   COUPONS, EXPIRED_COUPON, USED_COUPON, USED_COUPON_ORDER_REF,
   RETURN_REASONS, RETURN_SHIPPING_FEE, FULFILMENT_STEPS,
 } from './shop-context';
-import { PRODUCTS, SELLERS, STOCK, stockKey } from '../data/traveler/gear';
+import { PRODUCTS, SELLERS, STOCK, stockKey } from '../../data/shop/gear';
 
 const FAIL_REASONS = {
   failed: 'Your card was declined by the issuing bank. Nothing was charged.',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAi } from '../../context/useAi';
+import { useAi } from '../../context/ai/useAi';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';
 import StatusPill from '../../components/ui/StatusPill';

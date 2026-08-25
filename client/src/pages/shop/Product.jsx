@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useShop } from '../../context/useShop';
-import { PRODUCTS, SELLERS, stockKey } from '../../data/traveler/gear';
+import { useApp } from '../../context/app/useApp';
+import { useShop } from '../../context/shop/useShop';
+import { PRODUCTS, SELLERS, stockKey } from '../../data/shop/gear';
 import Button from '../../components/ui/Button';
 import Stepper from '../../components/ui/Stepper';
 import StatusPill from '../../components/ui/StatusPill';

@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useTransport } from '../../context/useTransport';
-import { LEAD_WINDOW_HOURS } from '../../context/transport-context';
+import { useApp } from '../../context/app/useApp';
+import { useTransport } from '../../context/transport/useTransport';
+import { LEAD_WINDOW_HOURS } from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
 import StatusPill from '../../components/ui/StatusPill';
 import EmptyState from '../../components/ui/EmptyState';

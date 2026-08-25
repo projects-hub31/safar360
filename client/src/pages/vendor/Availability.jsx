@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useVendor } from '../../context/useVendor';
+import { useVendor } from '../../context/vendor/useVendor';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';

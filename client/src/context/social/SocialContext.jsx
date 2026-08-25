@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { SocialContext } from './social-context';
 import { AUTO_REVIEW_AT, FAIL_MESSAGE_TRIGGER } from './social-context';
-import { SEED_POSTS, SEED_THREADS, AUTHORS } from '../data/traveler/social';
+import { SEED_POSTS, SEED_THREADS, AUTHORS } from '../../data/social/social';
 
 // Module 07, traveller-facing slice (feed, composer, post detail, profile,
 // chats, thread, report). Campaigns/referrals (influencer-only money screens)

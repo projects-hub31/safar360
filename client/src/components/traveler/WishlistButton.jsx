@@ -1,4 +1,4 @@
-import { useApp } from '../../context/useApp';
+import { useApp } from '../../context/app/useApp';
 
 // Overlay-on-photo variant of a wishlist toggle — shared by TourCard and the
 // Wishlist page's own cards so the star never drifts out of sync between them.

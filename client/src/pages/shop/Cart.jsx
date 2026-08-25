@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useShop } from '../../context/useShop';
-import { SELLERS, stockKey } from '../../data/traveler/gear';
-import { SHIPPING_PER_SELLER } from '../../context/shop-context';
+import { useApp } from '../../context/app/useApp';
+import { useShop } from '../../context/shop/useShop';
+import { SELLERS, stockKey } from '../../data/shop/gear';
+import { SHIPPING_PER_SELLER } from '../../context/shop/shop-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';

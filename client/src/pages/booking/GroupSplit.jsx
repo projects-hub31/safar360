@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useBooking } from '../../context/useBooking';
-import { GROUP_WINDOW_HOURS } from '../../context/booking-context';
+import { useApp } from '../../context/app/useApp';
+import { useBooking } from '../../context/booking/useBooking';
+import { GROUP_WINDOW_HOURS } from '../../context/booking/booking-context';
 import { TOURS } from '../../data/traveler/tours';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';

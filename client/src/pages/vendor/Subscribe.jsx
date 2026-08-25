@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useVendor } from '../../context/useVendor';
-import { useApp } from '../../context/useApp';
-import { PLANS, SALES_TAX_PCT } from '../../context/vendor-context';
+import { useVendor } from '../../context/vendor/useVendor';
+import { useApp } from '../../context/app/useApp';
+import { PLANS, SALES_TAX_PCT } from '../../context/vendor/vendor-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import ChoiceCard from '../../components/ui/ChoiceCard';

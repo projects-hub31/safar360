@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useBooking } from '../../context/useBooking';
+import { useApp } from '../../context/app/useApp';
+import { useBooking } from '../../context/booking/useBooking';
 import { TOURS, TOUR_DETAILS, seatPill } from '../../data/traveler/tours';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

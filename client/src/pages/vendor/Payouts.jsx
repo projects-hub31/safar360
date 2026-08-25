@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
-import { useVendor } from '../../context/useVendor';
-import { useApp } from '../../context/useApp';
+import { useVendor } from '../../context/vendor/useVendor';
+import { useApp } from '../../context/app/useApp';
 import Card from '../../components/ui/Card';
 import StatusPill from '../../components/ui/StatusPill';
 import EmptyState from '../../components/ui/EmptyState';

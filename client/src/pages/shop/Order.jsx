@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useShop } from '../../context/useShop';
+import { useApp } from '../../context/app/useApp';
+import { useShop } from '../../context/shop/useShop';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

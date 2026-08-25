@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { useVendor } from '../../context/useVendor';
-import { GRACE_DAYS } from '../../context/vendor-context';
+import { useVendor } from '../../context/vendor/useVendor';
+import { GRACE_DAYS } from '../../context/vendor/vendor-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

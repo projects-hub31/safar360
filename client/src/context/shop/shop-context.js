@@ -16,7 +16,7 @@ export const RETURN_SHIPPING_FEE = 350; // §3: charged against the refund unles
 // booking module's constants (rather than inventing a second set) means a
 // traveller who already knows the test card/numbers from checkout doesn't have
 // to learn new ones for gear.
-export { DECLINE_CARD, FRAUD_CARD, FRAUD_AMOUNT_THRESHOLD, refFor } from './booking-context';
+export { DECLINE_CARD, FRAUD_CARD, FRAUD_AMOUNT_THRESHOLD, refFor } from '../booking/booking-context';
 
 // Coupons — §3's five distinct failure modes plus `valid`, modelled as a
 // `result` enum returned by applyCoupon(), never a bare boolean. `EXPIRED_`/

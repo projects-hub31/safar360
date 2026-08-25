@@ -1,5 +1,5 @@
-import { useAuth } from '../../context/useAuth';
-import { useVendor } from '../../context/useVendor';
+import { useAuth } from '../../context/auth/useAuth';
+import { useVendor } from '../../context/vendor/useVendor';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

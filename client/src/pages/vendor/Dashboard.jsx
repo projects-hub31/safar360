@@ -1,7 +1,7 @@
-import { useAuth } from '../../context/useAuth';
-import { useBooking } from '../../context/useBooking';
-import { useVendor } from '../../context/useVendor';
-import { useApp } from '../../context/useApp';
+import { useAuth } from '../../context/auth/useAuth';
+import { useBooking } from '../../context/booking/useBooking';
+import { useVendor } from '../../context/vendor/useVendor';
+import { useApp } from '../../context/app/useApp';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';

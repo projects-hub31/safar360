@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useBooking } from '../../context/useBooking';
-import { REQUEST_WINDOW_HOURS } from '../../context/booking-context';
+import { useApp } from '../../context/app/useApp';
+import { useBooking } from '../../context/booking/useBooking';
+import { REQUEST_WINDOW_HOURS } from '../../context/booking/booking-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Countdown from '../../components/ui/Countdown';

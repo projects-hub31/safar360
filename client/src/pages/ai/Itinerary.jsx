@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useAi } from '../../context/useAi';
-import { useBooking } from '../../context/useBooking';
+import { useApp } from '../../context/app/useApp';
+import { useAi } from '../../context/ai/useAi';
+import { useBooking } from '../../context/booking/useBooking';
 import { TOURS, seatPill } from '../../data/traveler/tours';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';

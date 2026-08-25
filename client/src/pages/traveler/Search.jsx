@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useBooking } from '../../context/useBooking';
+import { useApp } from '../../context/app/useApp';
+import { useBooking } from '../../context/booking/useBooking';
 import { TOURS } from '../../data/traveler/tours';
 import TourCard from '../../components/traveler/TourCard';
 import Button from '../../components/ui/Button';

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useShop } from '../../context/useShop';
-import { SELLERS, stockKey, stockPill } from '../../data/traveler/gear';
+import { useApp } from '../../context/app/useApp';
+import { useShop } from '../../context/shop/useShop';
+import { SELLERS, stockKey, stockPill } from '../../data/shop/gear';
 import StatusPill from '../ui/StatusPill';
 
 // Same shell as traveler/TourCard — image·title·meta·price·action — but every

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../../context/useApp';
-import { useAi } from '../../context/useAi';
+import { useApp } from '../../context/app/useApp';
+import { useAi } from '../../context/ai/useAi';
 import {
   ORIGINS, INTERESTS, PACE_OPTIONS, PLANNER_DEFAULTS,
   DAYS_MIN, DAYS_MAX, BUDGET_MIN, BUDGET_MAX, BUDGET_STEP,
-} from '../../context/ai-context';
+} from '../../context/ai/ai-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import SelectField from '../../components/ui/SelectField';
