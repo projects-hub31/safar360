@@ -94,7 +94,7 @@ export default function Explore() {
               )}
               <span className="absolute inset-x-0 bottom-0 flex items-center gap-2.5 bg-gradient-to-t from-black/85 to-transparent p-2.5">
                 <span dir="ltr" className="font-mono text-[11px] font-semibold text-white">♥ {p.likes}</span>
-                <span dir="ltr" className="font-mono text-[11px] text-[#D3D3D8]">◎ {p.comments.length}</span>
+                <span dir="ltr" className="font-mono text-[11px] text-white/80">◎ {p.comments.length}</span>
               </span>
             </Link>
           ))}

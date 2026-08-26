@@ -167,7 +167,7 @@ export default function Home() {
           />
           <div className="relative flex items-end gap-2.5">
             <div className="min-w-0 flex-1">
-              <span className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-wider text-[#C9D3D6]">
+              <span className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-wider text-white/80">
                 Six ways in <span className="h-px flex-1 bg-gradient-to-r from-white/35 to-transparent" />
               </span>
               <p className="max-w-[28ch] text-sm font-semibold leading-snug text-white">
@@ -198,12 +198,12 @@ export default function Home() {
                   borderInlineStart: `4px solid ${i === 0 ? 'var(--accent)' : 'var(--primary)'}`,
                 }}
               >
-                <span dir="ltr" className="font-mono text-[10px] tracking-wider text-[#BAC7CB]">
+                <span dir="ltr" className="font-mono text-[10px] tracking-wider text-white/70">
                   {tile.code}·0{i + 1}
                 </span>
                 <span className="text-[13px] font-bold leading-tight sm:text-sm">{tile.title}</span>
-                <span className="text-[11.5px] leading-tight text-[#D6DBDD]">{tile.meta}</span>
-                <span className="mt-auto flex items-center gap-1.5 border-t border-dashed border-white/25 pt-1.5 font-mono text-[9.5px] uppercase tracking-wider text-[#B9C6C9]">
+                <span className="text-[11.5px] leading-tight text-white/85">{tile.meta}</span>
+                <span className="mt-auto flex items-center gap-1.5 border-t border-dashed border-white/25 pt-1.5 font-mono text-[9.5px] uppercase tracking-wider text-white/70">
                   {tile.verb}
                   <span aria-hidden="true" className="ml-auto text-white">→</span>
                 </span>
