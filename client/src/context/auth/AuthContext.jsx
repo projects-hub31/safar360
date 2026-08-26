@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { AuthContext, PARTNER_ROLES } from './auth-context';
+import { useCallback, useMemo, useState } from 'react';
+import { AuthContext, PARTNER_ROLES, ROLES } from './auth-context';
 
 const OTP_MAX_ATTEMPTS = 5;
 
@@ -44,17 +44,17 @@ export function AuthProvider({ children }) {
   // as a React `key` to restart its countdown on resend — see Countdown.jsx.
   const [pending, setPending] = useState(null);
 
-  const persistUser = (next) => {
+  const persistUser = useCallback((next) => {
     setUser(next);
     writeUser(next);
-  };
+  }, []);
 
-  const chooseRole = (roleId) => setSignupRole(roleId);
+  const chooseRole = useCallback((roleId) => setSignupRole(roleId), []);
 
   // Returns { ok: true } to proceed to OTP, or { ok: false, reason: 'duplicate' }
   // to show the "this account may exist" panel (§6 register) — never confirms
   // outright, so the flow can't be used to enumerate accounts.
-  const startRegister = ({ method, phone, email, password, name }) => {
+  const startRegister = useCallback(({ method, phone, email, password, name }) => {
     if (method === 'phone' && normalizePhone(phone) === DUPLICATE_PHONE) {
       return { ok: false, reason: 'duplicate' };
     }
@@ -69,11 +69,11 @@ export function AuthProvider({ children }) {
       otpToken: 0,
     });
     return { ok: true };
-  };
+  }, []);
 
   // OAuth stubs still land on OTP — the source spec keeps phone verification
   // mandatory regardless of how the account started (§6 register).
-  const startOAuth = (provider) => {
+  const startOAuth = useCallback((provider) => {
     setPending({
       purpose: 'register',
       method: 'oauth',
@@ -85,12 +85,12 @@ export function AuthProvider({ children }) {
       otpToken: 0,
     });
     return { ok: true };
-  };
+  }, []);
 
   // Password reset reuses the OTP component and, on success, revokes every
   // existing session — here that just means replacing `user` outright rather
   // than patching it (§6 register).
-  const startReset = ({ phone }) => {
+  const startReset = useCallback(({ phone }) => {
     setPending({
       purpose: 'reset',
       method: 'phone',
@@ -100,14 +100,14 @@ export function AuthProvider({ children }) {
       otpToken: 0,
     });
     return { ok: true };
-  };
+  }, []);
 
-  const resendOtp = () => {
+  const resendOtp = useCallback(() => {
     setPending((p) => (p ? { ...p, attempts: 0, otpToken: p.otpToken + 1 } : p));
-  };
+  }, []);
 
   // Returns { ok: true } on success, or { ok: false, attemptsLeft, exhausted }.
-  const verifyOtp = (code) => {
+  const verifyOtp = useCallback((code) => {
     if (!pending) return { ok: false, attemptsLeft: 0, exhausted: true };
 
     if (code !== MAGIC_OTP) {
@@ -135,11 +135,11 @@ export function AuthProvider({ children }) {
     }
     setPending(null);
     return { ok: true };
-  };
+  }, [pending, signupRole, user, persistUser]);
 
   // Mock sign-in: any non-empty password succeeds. A real backend replaces
   // this whole body; the caller-facing shape ({ ok }) doesn't need to change.
-  const login = ({ identifier, password }) => {
+  const login = useCallback(({ identifier, password }) => {
     if (!password) return { ok: false };
     persistUser(
       user && (user.phone === identifier || user.email === identifier)
@@ -147,19 +147,41 @@ export function AuthProvider({ children }) {
         : { name: 'Traveller', phone: identifier, email: null, role: 'traveller', verified: true, kycStatus: null, kycReason: null },
     );
     return { ok: true };
-  };
+  }, [user, persistUser]);
 
-  const signOut = () => persistUser(null);
+  const signOut = useCallback(() => persistUser(null), [persistUser]);
 
-  const submitKyc = (payload) => {
+  // Testing-only shortcut, not part of the wireframe spec — signs straight
+  // in as a fresh account for any of the 7 roles with no phone/OTP entry,
+  // so every RequireAuth/RequireRole-gated screen (§8) is reachable in one
+  // click while testing. Partner roles start already `kycStatus: 'approved'`
+  // rather than 'none' so a publish gate never blocks this path — approving
+  // KYC for real is its own already-built flow (identity/kyc), this is only
+  // for skipping straight past it. Same honestly-labeled-lever spirit as
+  // `BookingContext.forceOutcome` / the KYC-pending preview links, not
+  // hidden magic.
+  const quickSignIn = useCallback((roleId) => {
+    const role = ROLES.find((r) => r.id === roleId);
+    persistUser({
+      name: `Test ${role?.label || 'User'}`,
+      phone: '3000000000',
+      email: null,
+      role: roleId,
+      verified: true,
+      kycStatus: PARTNER_ROLES.includes(roleId) ? 'approved' : null,
+      kycReason: null,
+    });
+  }, [persistUser]);
+
+  const submitKyc = useCallback((payload) => {
     persistUser(user ? { ...user, kycStatus: 'pending', kyc: payload, kycReason: null } : user);
-  };
+  }, [user, persistUser]);
 
   // Lets a not-yet-built admin console (module 09) flip this later; also used
   // by the two "preview" links on kyc-pending until that console exists.
-  const setKycStatus = (status, reason = null) => {
+  const setKycStatus = useCallback((status, reason = null) => {
     persistUser(user ? { ...user, kycStatus: status, kycReason: reason } : user);
-  };
+  }, [user, persistUser]);
 
   // The wireframe's own shell has a role switcher (§5 per-role nav) — this is
   // a single demo account acting as different actors for testing, the same
@@ -167,15 +189,15 @@ export function AuthProvider({ children }) {
   // account system (that needs a real backend). Switching into a partner role
   // for the first time starts KYC at 'none'; switching back later preserves
   // whatever KYC status that role had reached, rather than resetting it.
-  const switchRole = (roleId) => {
+  const switchRole = useCallback((roleId) => {
     persistUser(user ? {
       ...user,
       role: roleId,
       kycStatus: PARTNER_ROLES.includes(roleId) ? (user.kycStatus ?? 'none') : user.kycStatus,
     } : user);
-  };
+  }, [user, persistUser]);
 
-  const value = {
+  const value = useMemo(() => ({
     user,
     signupRole,
     pending,
@@ -187,10 +209,14 @@ export function AuthProvider({ children }) {
     verifyOtp,
     login,
     signOut,
+    quickSignIn,
     submitKyc,
     setKycStatus,
     switchRole,
-  };
+  }), [
+    user, signupRole, pending, chooseRole, startRegister, startOAuth, startReset,
+    resendOtp, verifyOtp, login, signOut, quickSignIn, submitKyc, setKycStatus, switchRole,
+  ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

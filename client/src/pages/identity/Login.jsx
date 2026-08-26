@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/auth/useAuth';
+import { ROLES } from '../../context/auth/auth-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, quickSignIn } = useAuth();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +22,11 @@ export default function Login() {
       return;
     }
     navigate('/discover/home');
+  };
+
+  const onQuickSignIn = (roleId) => {
+    quickSignIn(roleId);
+    navigate(ROLES.find((r) => r.id === roleId).nav[0][1]);
   };
 
   return (
@@ -65,6 +71,29 @@ export default function Login() {
         <span>Recovery always sends a one-time code — never a password, and support can't read or set one.</span>
         <span>Repeated failed sign-ins on a number are rate-limited; we'll tell you if that happens.</span>
       </Card>
+
+      <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border-loud p-4">
+        <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">
+          Quick sign-in · testing only, not a real account
+        </span>
+        <p className="text-xs leading-relaxed text-fg-muted">
+          Skips phone entry and the OTP screen entirely — signs you straight in as a fresh test account for
+          that role. Partner roles start already KYC-approved so every gated screen is reachable immediately.
+          Once signed in, switch between all 7 roles any time from "Acting as" in the header.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {ROLES.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => onQuickSignIn(r.id)}
+              className="min-h-9 rounded-lg border border-border-loud bg-surface px-3 text-xs font-semibold text-fg"
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <p className="text-center text-sm text-fg-muted">
         New here?{' '}

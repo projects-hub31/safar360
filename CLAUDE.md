@@ -1787,6 +1787,90 @@ Given what's already scaffolded, the natural next slices are:
    fallback correctly and no screen regressed visually, even though the build/lint
    passes prove every import resolves and nothing is dead code.
 
+10. **Context re-render pass** — every one of the 9 `context/*/…Context.jsx` providers
+    built its `value` object (and every action function inside it) fresh on each render,
+    with zero `useCallback`/`useMemo` anywhere in `context/` (confirmed by grep before this
+    pass). Nested 9-deep in `main.jsx`, that meant any state change in an outer provider
+    (e.g. `AppProvider`'s wishlist toggle) hands every inner provider's consumers — the
+    entire routed app — a brand-new context value and re-renders them, regardless of
+    whether they read that particular piece of state. Fixed by wrapping every action in
+    `useCallback` (functions that read state via closure — `kycQueue.find`, `posts.find`,
+    `bookings.find`, etc. — took that state as an explicit dependency rather than a
+    functional-updater form, to stay correct) and every provider's `value` in `useMemo`.
+    `SocialContext.jsx` also had `blockAccount` defined after `reportPost`, which reads it
+    — harmless with plain closures but a TDZ crash once `reportPost`'s `useCallback` deps
+    array needed to reference it, so the follow/block section moved above the posts
+    section. Also removed one genuinely dead line — `ChoiceCard`'s re-export in
+    `components/ui/index.js` was never actually imported through the barrel (every caller
+    imports it directly) — confirmed via `knip`, which also confirms zero unused files,
+    zero unused dependencies, and zero eslint `no-unused-vars` hits app-wide before and
+    after. Added a `vite.config.js` `manualChunks` split (`react`/`react-dom`/
+    `react-router-dom` into their own `vendor` chunk, function form — this Vite 8/Rolldown
+    setup rejects the older object-form `manualChunks`) so a returning user's browser
+    caches that ~73KB-gzip chunk across app deploys instead of re-fetching it every time
+    any page's code changes. Verified via a clean `eslint` pass (including
+    `react-hooks/exhaustive-deps`, which would flag a wrong/missing dependency) and a
+    clean production `vite build` after every file; no Chrome extension available this
+    session to click through the app, so a future session should still smoke-test a money
+    path (checkout, admin fraud refund) end to end to confirm no stale-closure regression
+    slipped past lint.
+
+11. **Nav data bug + route guards** — the `transport` and `seller` roles' "Money" nav item
+    (`auth-context.js`'s `ROLES` table) both pointed at `/vendor/payouts`, the tour-
+    operator's own ledger — wrong data shown to those two roles. Fixed by building each its
+    own earnings screen reading its own real data: `pages/shop/SellerPayouts.jsx` (two
+    honest buckets, Accruing/Payable, derived from each sub-order's existing fulfilment
+    state — no invented release-batch mechanic since `ShopContext` has no such trigger for
+    gear the way `VendorContext.ledger` does for tours; a returned sub-order shows Rs 0,
+    computed at display time since `submitReturn` doesn't persist a reversed-commission
+    field) and `pages/transport/Money.jsx` (accepted quotes only — §3's lead lifecycle has
+    nothing past `accepted` to key a payout stage off — commission read live off
+    `policy.commissionPct`, the same "policy is live, never hard-coded" rule the fraud/
+    weather gates already follow, since transport has no per-owner commission table the way
+    vendor plans and gear sellers do). Routed at `transport/money` and `shop/seller-payouts`.
+    Also added the route guards flagged as a known gap since item 2 above ("nothing stops a
+    signed-out user from hitting `/identity/kyc` directly"): `components/layout/
+    RequireAuth.jsx` and `RequireRole.jsx`, following the exact three-part gate template
+    `components/admin/PermGate.jsx` already established for admin sub-roles (an `EmptyState`
+    stating blocked · why · what unblocks it, never a silent redirect) rather than a new UX
+    pattern. `App.jsx`'s route tree is now grouped: public (discovery browsing, the identity
+    flow itself, public feed/profile/post, the group-split guest pay-link which must stay
+    reachable with no account per §3) → `RequireAuth` for everything else → nested
+    `RequireRole` groups per actor (`operator`, `transport`, `property`, `seller`,
+    `influencer`, `admin`) for actor-scoped screens, including `ai/weather` under `operator`
+    (§8 item 6's note that it's operator-facing despite the `ai/` prefix). Admin's existing
+    per-page `PermGate` checks are unchanged and still the finer-grained sub-role gate;
+    `RequireRole role="admin"` only adds the outer "signed in and acting as admin" check
+    those pages didn't have. This is still a single-demo-account role-switcher (§7), not
+    real multi-tenancy, so "wrong role" is phrased in the gate copy as "switch Acting as,"
+    not a real authorization failure. Verified via a clean `eslint` pass and a clean
+    production `vite build`; no Chrome extension available this session (declined), so a
+    future session should still click through: a signed-out deep link to `/identity/kyc`
+    and to a `vendor/*` URL, a traveller-role visit to a `vendor/*` URL, and both new Money
+    screens against real checkout/quote-accept data, to confirm the gates render correctly
+    and nothing above them regressed.
+
+12. **Quick sign-in (testing-only)** — item 11's route guards made manually testing every
+    role tedious (register → OTP → magic code `419027`, once per role, before the
+    `RequireRole` gates would even let a screen render). Added `AuthContext.quickSignIn
+    (roleId)`: signs straight in as a fresh test account for any of the 7 roles with no
+    phone/OTP entry at all, partner roles starting already `kycStatus: 'approved'` so no
+    publish gate blocks the path. Surfaced as a labeled panel on `identity/Login.jsx` (one
+    button per role) — same honestly-labeled-testing-lever convention as `BookingContext.
+    forceOutcome` and the KYC-pending preview links (§8 item 2), a dashed-border box that
+    says outright "testing only, not a real account," never presented as a real capability.
+    Once signed in via either this or the real flow, the header's existing "Acting as"
+    switcher (§7) still moves between all 7 roles with no further sign-in — this panel only
+    removes the *first* sign-in's friction. Verified via a clean `eslint` pass and a clean
+    production `vite build`; a first attempt at this edit landed only the `ROLES` import
+    (a typo'd absolute path silently failed the actual function-body edit) and lint caught
+    it immediately as `quickSignIn` referenced-but-undefined — fixed same session, flagged
+    here as a reminder that a green lint run after multi-edit changes is load-bearing, not
+    a formality. **Not yet manually verified in-browser** (Chrome extension still declined
+    this session) — the user was walking through it live via `#/identity/login` at the time
+    this entry was written; if that surfaced anything, a future session should check here
+    first before re-testing from scratch.
+
 Do not build all 9 modules' UI against mock data first and wire the backend later "in
 bulk" — the payment/inventory/moderation state machines are the actual product, and
 building screens without their real transitions produces UI that has to be re-thought,

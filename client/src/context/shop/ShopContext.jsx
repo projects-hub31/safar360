@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ShopContext } from './shop-context';
 import {
   SHIPPING_PER_SELLER, COD_CAP, CHECKOUT_SESSION_MINUTES, SHIP_WITHIN_DAYS,
@@ -28,34 +28,34 @@ export function ShopProvider({ children }) {
   const [notifyList, setNotifyList] = useState([]); // productId:variantId a traveller asked to be notified about
 
   const nextId = useRef(1);
-  const genId = (prefix) => `${prefix}${nextId.current++}`;
+  const genId = useCallback((prefix) => `${prefix}${nextId.current++}`, []);
 
   // --- cart ----------------------------------------------------------------
-  const addToCart = (productId, variantId, qty = 1) => {
+  const addToCart = useCallback((productId, variantId, qty = 1) => {
     setCart((c) => {
       const i = c.findIndex((l) => l.productId === productId && l.variantId === variantId);
       if (i === -1) return c.concat({ productId, variantId, qty });
       return c.map((l, idx) => (idx === i ? { ...l, qty: l.qty + qty } : l));
     });
-  };
-  const setQty = (productId, variantId, qty) => {
+  }, []);
+  const setQty = useCallback((productId, variantId, qty) => {
     setCart((c) => (qty <= 0
       ? c.filter((l) => !(l.productId === productId && l.variantId === variantId))
       : c.map((l) => (l.productId === productId && l.variantId === variantId ? { ...l, qty } : l))));
-  };
-  const removeFromCart = (productId, variantId) => setQty(productId, variantId, 0);
-  const clearCart = () => { setCart([]); setCoupon(null); };
+  }, []);
+  const removeFromCart = useCallback((productId, variantId) => setQty(productId, variantId, 0), [setQty]);
+  const clearCart = useCallback(() => { setCart([]); setCoupon(null); }, []);
 
   // --- derived read helpers (pure — safe to call from render) --------------
-  const cartLines = (cartArr = cart) => cartArr
+  const cartLines = useCallback((cartArr = cart) => cartArr
     .map((item) => {
       const product = PRODUCTS.find((p) => p.id === item.productId);
       const variant = product?.variants.find((v) => v.id === item.variantId);
       return product && variant ? { ...item, product, variant, lineTotal: product.price * item.qty } : null;
     })
-    .filter(Boolean);
+    .filter(Boolean), [cart]);
 
-  const totalsFor = (cartArr = cart, couponArr = coupon) => {
+  const totalsFor = useCallback((cartArr = cart, couponArr = coupon) => {
     const lines = cartLines(cartArr);
     const subtotal = lines.reduce((n, l) => n + l.lineTotal, 0);
     const sellerIds = [...new Set(lines.map((l) => l.product.sellerId))];
@@ -70,10 +70,10 @@ export function ShopProvider({ children }) {
     const total = subtotal - discount + shipping;
     const codBlocked = total > COD_CAP && sellerIds.some((id) => !SELLERS[id]?.codAllowed);
     return { lines, sellerIds, subtotal, shipping, discount, total, codBlocked };
-  };
+  }, [cart, coupon, cartLines]);
 
   // --- coupons (§3: five failure modes + valid, as a `result` enum) --------
-  const applyCoupon = (code) => {
+  const applyCoupon = useCallback((code) => {
     const norm = code.trim().toUpperCase();
     if (norm === EXPIRED_COUPON) return { result: 'expired', message: `${norm} expired at the end of last season.` };
     if (norm === USED_COUPON) return { result: 'used', message: `You've already used ${norm} — it was applied to order ${USED_COUPON_ORDER_REF}.` };
@@ -88,18 +88,18 @@ export function ShopProvider({ children }) {
     }
     setCoupon({ code: norm, ...c });
     return { result: 'valid', code: norm };
-  };
-  const clearCoupon = () => setCoupon(null);
+  }, [cart, totalsFor]);
+  const clearCoupon = useCallback(() => setCoupon(null), []);
 
   // --- checkout session (cosmetic countdown — never holds stock, §3) -------
-  const beginCheckout = () => {
+  const beginCheckout = useCallback(() => {
     setSession({ startedAt: Date.now(), expiresAt: Date.now() + CHECKOUT_SESSION_MINUTES * 60000 });
     setPaymentState('idle');
-  };
-  const expireSession = () => { setSession(null); setPaymentState('idle'); };
+  }, []);
+  const expireSession = useCallback(() => { setSession(null); setPaymentState('idle'); }, []);
 
   // --- the one commit path: atomic per-variant stock decrement (§3) --------
-  const commitOrder = ({ address, method }) => {
+  const commitOrder = useCallback(({ address, method }) => {
     const { lines, sellerIds, subtotal, shipping, discount, total } = totalsFor(cart, coupon);
     const bySeller = sellerIds.map((id) => lines.filter((l) => l.product.sellerId === id));
     const ref = refFor('ORD');
@@ -137,12 +137,12 @@ export function ShopProvider({ children }) {
     setPaymentState('confirmed');
     setSession(null);
     return { kind: 'confirmed', ref };
-  };
+  }, [cart, coupon, totalsFor, genId, clearCart]);
 
   // Mirrors BookingContext.resolvePayment's shape/branch order exactly (§3:
   // one shared payment/webhook state machine for tours and gear) — card/
   // amount rules first, then the atomic stock check.
-  const resolvePayment = ({ method, methodDetail, address }) => {
+  const resolvePayment = useCallback(({ method, methodDetail, address }) => {
     if (!cart.length) return { kind: 'expired' };
     if (session && Date.now() > session.expiresAt) {
       setPaymentState('idle');
@@ -172,15 +172,15 @@ export function ShopProvider({ children }) {
       return { kind: 'sold-out', reason: FAIL_REASONS['sold-out'] };
     }
     return commitOrder({ address, method });
-  };
+  }, [cart, session, coupon, stock, totalsFor, commitOrder]);
 
   // --- restock notify (§6 sold-out screen) ----------------------------------
-  const notifyMe = (productId, variantId) => setNotifyList((l) => l.concat(stockKey(productId, variantId)));
+  const notifyMe = useCallback((productId, variantId) => setNotifyList((l) => l.concat(stockKey(productId, variantId))), []);
 
   // --- fulfilment (demo-only advance — same honestly-labeled testing lever
   // pattern as BookingContext.forceOutcome, since no seller-side fulfilment
   // screen exists yet to drive this for real) ------------------------------
-  const advanceFulfilment = (orderRef, subOrderId) => {
+  const advanceFulfilment = useCallback((orderRef, subOrderId) => {
     setOrders((os) => os.map((o) => (o.ref !== orderRef ? o : {
       ...o,
       subOrders: o.subOrders.map((s) => {
@@ -195,15 +195,15 @@ export function ShopProvider({ children }) {
         };
       }),
     })));
-  };
+  }, []);
 
   // --- seller: manual restock (§6 seller-products) --------------------------
-  const restockVariant = (productId, variantId, amount) => {
+  const restockVariant = useCallback((productId, variantId, amount) => {
     setStock((current) => {
       const key = stockKey(productId, variantId);
       return { ...current, [key]: (current[key] ?? 0) + amount };
     });
-  };
+  }, []);
 
   // --- returns (§3/§6) -------------------------------------------------------
   // Reads the sub-order once from the surrounding closure (safe — this only
@@ -213,7 +213,7 @@ export function ShopProvider({ children }) {
   // would repeat the exact impure-updater bug §7 documents for
   // BookingContext.payShare — StrictMode double-invokes updaters in dev
   // specifically to catch that, and it would double-restore stock here.
-  const submitReturn = (orderRef, subOrderId, reasonId) => {
+  const submitReturn = useCallback((orderRef, subOrderId, reasonId) => {
     const order = orders.find((o) => o.ref === orderRef);
     const subOrder = order?.subOrders.find((s) => s.id === subOrderId);
     if (!subOrder) return null;
@@ -241,9 +241,9 @@ export function ShopProvider({ children }) {
     });
 
     return { reason, refund };
-  };
+  }, [orders]);
 
-  const value = {
+  const value = useMemo(() => ({
     cart, stock, coupon, session, paymentState, orders, notifyList,
     addToCart, setQty, removeFromCart, clearCart,
     cartLines, totalsFor,
@@ -254,7 +254,18 @@ export function ShopProvider({ children }) {
     advanceFulfilment,
     restockVariant,
     submitReturn,
-  };
+  }), [
+    cart, stock, coupon, session, paymentState, orders, notifyList,
+    addToCart, setQty, removeFromCart, clearCart,
+    cartLines, totalsFor,
+    applyCoupon, clearCoupon,
+    beginCheckout, expireSession,
+    resolvePayment,
+    notifyMe,
+    advanceFulfilment,
+    restockVariant,
+    submitReturn,
+  ]);
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>;
 }

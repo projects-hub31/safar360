@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { AiContext } from './ai-context';
 import {
   ESCALATE_MONEY_KEYWORDS, ESCALATE_SAFETY_KEYWORDS, BOOKING_REF_RE,
@@ -61,13 +61,13 @@ export function AiProvider({ children }) {
   const [geofence, setGeofence] = useState({});
   const [checkIns, setCheckIns] = useState({});
 
-  const setGeofenceState = (landmarkId, state) => {
+  const setGeofenceState = useCallback((landmarkId, state) => {
     setGeofence((g) => ({ ...g, [landmarkId]: state }));
-  };
+  }, []);
 
-  const checkIn = (landmarkId, { notifyContact = false } = {}) => {
+  const checkIn = useCallback((landmarkId, { notifyContact = false } = {}) => {
     setCheckIns((c) => ({ ...c, [landmarkId]: { at: Date.now(), notifiedContact: notifyContact } }));
-  };
+  }, []);
 
   // --- live in-trip tracking (§6 08-ai isTracking) ---------------------------
   // "Who can see this" toggle state — real, not decorative. `trackLastPingAt`
@@ -79,9 +79,9 @@ export function AiProvider({ children }) {
   const [trackShares, setTrackShares] = useState(TRACK_SHARES_SEED);
   const [trackLastPingAt] = useState(() => Date.now() - 47 * 60000);
 
-  const toggleTrackShare = (id) => {
+  const toggleTrackShare = useCallback((id) => {
     setTrackShares((ts) => ts.map((t) => (t.id === id ? { ...t, on: !t.on } : t)));
-  };
+  }, []);
 
   // --- weather override flow (§3) --------------------------------------------
   // A lazy initializer (allowed to call Date.now() once, per the react-hooks
@@ -98,7 +98,7 @@ export function AiProvider({ children }) {
   // money-moving mutation stays here, calling the same ordinary
   // `cancelBooking`/`reverseLedger` actions every other cancellation flow
   // uses. No parallel weather-refund code path.
-  const decideWeatherAlert = (alertId, decision, { refundPct } = {}) => {
+  const decideWeatherAlert = useCallback((alertId, decision, { refundPct } = {}) => {
     const alert = weatherAlerts.find((a) => a.id === alertId);
     if (!alert || alert.status !== 'pending') return null;
     let result = null;
@@ -110,24 +110,24 @@ export function AiProvider({ children }) {
       ? { ...a, status: WEATHER_DECISION_STATUS[decision], decision, decidedAt: Date.now(), refundResult: result }
       : a)));
     return result;
-  };
+  }, [weatherAlerts, cancelBooking, reverseLedger]);
 
   // Countdown's own `onExpire` fires this — "no decision = auto-postpone"
   // (§3) is a real timeout, not an operator choice, so it's a distinct status
   // rather than routed through `decideWeatherAlert`'s decision map.
-  const autoPostponeAlert = (alertId) => {
+  const autoPostponeAlert = useCallback((alertId) => {
     setWeatherAlerts((alerts) => alerts.map((a) => (a.id === alertId && a.status === 'pending'
       ? { ...a, status: 'auto-postponed', decision: null, decidedAt: Date.now() }
       : a)));
-  };
+  }, []);
 
   const nextId = useRef(1);
-  const genId = (prefix) => `${prefix}${nextId.current++}`;
+  const genId = useCallback((prefix) => `${prefix}${nextId.current++}`, []);
 
   // --- planner: builds a real day-by-day plan against the live catalog ------
   // The screen literally shows this payload as a transparency device (§6
   // planner: "shows the constructed API call `POST /ai/plan-trip {...}`").
-  const planTrip = ({ origin, days, budget, travellers, interests, pace }) => {
+  const planTrip = useCallback(({ origin, days, budget, travellers, interests, pace }) => {
     const candidates = TOURS
       .filter((t) => t.price * travellers <= budget)
       .sort((a, b) => scoreInterest(b, interests) - scoreInterest(a, interests) || b.rating - a.rating);
@@ -155,12 +155,12 @@ export function AiProvider({ children }) {
     };
     setCurrentItinerary(itinerary);
     return itinerary;
-  };
+  }, [genId]);
 
   // Re-costs against the CURRENT catalog + live seat pool, exactly what the
   // "saved" screen is required to do (§6 saved: "Re-costs on open and
   // surfaces a price-delta explanation if a rate changed since saving").
-  const recostItinerary = (itinerary) => {
+  const recostItinerary = useCallback((itinerary) => {
     let savedTotal = 0;
     let currentTotal = 0;
     const lines = itinerary.items.map((it) => {
@@ -171,16 +171,16 @@ export function AiProvider({ children }) {
       return { ...it, tour, stillBookable };
     });
     return { lines, savedTotal, currentTotal, delta: currentTotal - savedTotal };
-  };
+  }, [avail]);
 
-  const saveItinerary = (itinerary) => {
+  const saveItinerary = useCallback((itinerary) => {
     setSaved((s) => s.concat({ ...itinerary, savedAt: Date.now() }));
-  };
+  }, []);
 
   // --- chatbot ---------------------------------------------------------------
   // Every tool call renders as its own visible block (name/args/result),
   // never folded silently into the prose reply (§3 chatbot transparency).
-  const sendChatMessage = (text) => {
+  const sendChatMessage = useCallback((text) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     setMessages((m) => m.concat({ id: genId('u'), role: 'user', text: trimmed, toolCalls: [], escalate: null, at: Date.now() }));
@@ -240,13 +240,13 @@ export function AiProvider({ children }) {
 
     setMessages((m) => m.concat({ id: genId('b'), role: 'assistant', text: reply, toolCalls, escalate, at: Date.now() }));
     return { escalate };
-  };
+  }, [bookings, failStreak, messages, genId]);
 
   // User-initiated escalation — the control is always visible, never buried
   // behind a failed answer (§3 chatbot escalation), so this always connects
   // immediately rather than routing through sendChatMessage's keyword/fail-
   // streak classifier.
-  const escalateNow = () => {
+  const escalateNow = useCallback(() => {
     setMessages((m) => m.concat({
       id: genId('u'), role: 'user', text: 'Talk to a person.', toolCalls: [], escalate: null, at: Date.now(),
     }, {
@@ -261,16 +261,23 @@ export function AiProvider({ children }) {
       }],
     }));
     setFailStreak(0);
-  };
+  }, [bookings, messages, genId]);
 
-  const value = {
+  const value = useMemo(() => ({
     currentItinerary, saved, messages,
     planTrip, recostItinerary, saveItinerary,
     sendChatMessage, escalateNow,
     geofence, setGeofenceState, checkIns, checkIn,
     weatherAlerts, decideWeatherAlert, autoPostponeAlert,
     trackShares, toggleTrackShare, trackLastPingAt,
-  };
+  }), [
+    currentItinerary, saved, messages,
+    planTrip, recostItinerary, saveItinerary,
+    sendChatMessage, escalateNow,
+    geofence, setGeofenceState, checkIns, checkIn,
+    weatherAlerts, decideWeatherAlert, autoPostponeAlert,
+    trackShares, toggleTrackShare, trackLastPingAt,
+  ]);
 
   return <AiContext.Provider value={value}>{children}</AiContext.Provider>;
 }

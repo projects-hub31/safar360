@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { BookingContext } from './booking-context';
 import {
   LOCK_MINUTES,
@@ -65,13 +65,13 @@ export function BookingProvider({ children }) {
   // Monotonic ids — generated inside event handlers (never render), so a
   // plain incrementing counter is simpler and just as safe as Date.now().
   const nextId = useRef(1);
-  const genId = (prefix) => `${prefix}${nextId.current++}`;
+  const genId = useCallback((prefix) => `${prefix}${nextId.current++}`, []);
 
   // --- locking (instant-mode bookings only) -----------------------------
   // `departureDays` (days from today) is the caller's input, not a raw
   // timestamp — Date.now() is only ever touched inside functions like this
   // one that run from an event handler, never in a component's render body.
-  const startLock = ({ tourId, title, price, seats, departureDays, cancellationPolicy }) => {
+  const startLock = useCallback(({ tourId, title, price, seats, departureDays, cancellationPolicy }) => {
     const token = nextId.current++;
     setLock({
       lockToken: token,
@@ -92,11 +92,11 @@ export function BookingProvider({ children }) {
     });
     setPaymentState('idle');
     return token;
-  };
+  }, []);
 
-  const setGuests = (guests) => setLock((l) => (l ? { ...l, guests } : l));
+  const setGuests = useCallback((guests) => setLock((l) => (l ? { ...l, guests } : l)), []);
 
-  const applyPromo = (code) => {
+  const applyPromo = useCallback((code) => {
     const norm = code.trim().toUpperCase();
     const pct = PROMO_CODES[norm];
     if (!pct) {
@@ -105,39 +105,39 @@ export function BookingProvider({ children }) {
     }
     setLock((l) => (l ? { ...l, promoCode: norm, discountPct: pct } : l));
     return { ok: true, pct };
-  };
+  }, []);
 
-  const chooseMethod = (method, detail) =>
-    setLock((l) => (l ? { ...l, method, methodDetail: detail, extended: method === 'bank' } : l));
+  const chooseMethod = useCallback((method, detail) =>
+    setLock((l) => (l ? { ...l, method, methodDetail: detail, extended: method === 'bank' } : l)), []);
 
   // Pay button pressed — moves the ladder to "authorized, awaiting webhook".
   // Nothing is captured yet; resolvePayment() (called from the awaiting
   // screen) is what actually commits or fails the attempt.
-  const beginCapture = () => setPaymentState('pending');
+  const beginCapture = useCallback(() => setPaymentState('pending'), []);
 
   // Lock TTL elapsed with no payment submitted — slot returns to the public
   // pool untouched (nothing was ever deducted).
-  const expireLock = () => {
+  const expireLock = useCallback(() => {
     setLock(null);
     setPaymentState('idle');
-  };
+  }, []);
 
-  const clearLock = () => {
+  const clearLock = useCallback(() => {
     setLock(null);
     setPaymentState('idle');
-  };
+  }, []);
 
-  const totalsFor = (l) => {
+  const totalsFor = useCallback((l) => {
     const subtotal = l.price * l.seats;
     const discount = Math.round(subtotal * (l.discountPct / 100));
     const fee = Math.round((subtotal - discount) * SERVICE_FEE_PCT);
     return { subtotal, discount, fee, total: subtotal - discount + fee };
-  };
+  }, []);
 
   // The one place seats actually leave the pool and a booking is written —
   // called from both the normal auto-resolve path and the forced-outcome
   // panel's "confirmed" branch, so there is exactly one commit path (§3 Law 1).
-  const commitConfirmed = (l) => {
+  const commitConfirmed = useCallback((l) => {
     const { total } = totalsFor(l);
     const ref = refFor('SFR');
     setAvail((current) => ({ ...current, [l.tourId]: (current[l.tourId] ?? 0) - l.seats }));
@@ -157,12 +157,12 @@ export function BookingProvider({ children }) {
     setPaymentState('confirmed');
     setLock(null);
     return { kind: 'confirmed', ref };
-  };
+  }, [totalsFor]);
 
   // The real decision: card/amount rules first (deterministic, documented —
   // see booking-context.js), then the atomic seat check (§3). Called once by
   // the awaiting screen after its own simulated webhook delay.
-  const resolvePayment = () => {
+  const resolvePayment = useCallback(() => {
     if (!lock) return { kind: 'expired' };
     if (Date.now() > lock.expiresAt && !lock.extended) {
       setPaymentState('failed');
@@ -202,23 +202,23 @@ export function BookingProvider({ children }) {
     }
 
     return commitConfirmed(lock);
-  };
+  }, [lock, avail, totalsFor, commitConfirmed]);
 
   // No live gateway to actually decline/hold/race a booking against — this
   // exercises the exact same commit/fail/hold paths as resolvePayment, just
   // picked explicitly rather than derived, so every branch of the state
   // machine stays reachable for testing. Same honest framing as the KYC
   // preview links in identity (module 03).
-  const forceOutcome = (kind) => {
+  const forceOutcome = useCallback((kind) => {
     if (!lock) return { kind: 'expired' };
     if (kind === 'confirmed') return commitConfirmed(lock);
     setPaymentState(kind === 'held' ? 'held' : 'failed');
     setLock(null);
     return { kind, reason: FAIL_REASONS[kind] || 'Forced outcome for testing.' };
-  };
+  }, [lock, commitConfirmed]);
 
   // --- request-to-book (operator-mediated, no lock, no charge) -----------
-  const createRequest = ({ tourId, title, price, seats, guests }) => {
+  const createRequest = useCallback(({ tourId, title, price, seats, guests }) => {
     const id = genId('rq');
     setRequests((rs) => rs.concat({
       id, tourId, title, price, seats, guests: guests || [],
@@ -226,9 +226,9 @@ export function BookingProvider({ children }) {
       status: 'pending',
     }));
     return id;
-  };
+  }, [genId]);
 
-  const acceptRequest = (id) => {
+  const acceptRequest = useCallback((id) => {
     const req = requests.find((r) => r.id === id);
     if (!req || req.status !== 'pending') return null;
     setAvail((current) => ({ ...current, [req.tourId]: (current[req.tourId] ?? 0) - req.seats }));
@@ -240,14 +240,14 @@ export function BookingProvider({ children }) {
     }));
     setRequests((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'accepted', ref } : r)));
     return ref;
-  };
+  }, [requests]);
 
-  const declineRequest = (id, reason) => {
+  const declineRequest = useCallback((id, reason) => {
     setRequests((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'declined', reason } : r)));
-  };
+  }, []);
 
   // --- group split (all-or-nothing) --------------------------------------
-  const startGroupSplit = ({ tourId, title, price, participantNames }) => {
+  const startGroupSplit = useCallback(({ tourId, title, price, participantNames }) => {
     const id = genId('gp');
     setGroups((gs) => gs.concat({
       id, tourId, title, price,
@@ -256,7 +256,7 @@ export function BookingProvider({ children }) {
       participants: participantNames.map((name) => ({ name, status: 'unpaid' })),
     }));
     return id;
-  };
+  }, [genId]);
 
   // The allPaid decision is made once here, from the closure's current
   // `groups` (safe — this only ever runs from an event handler, so it's the
@@ -265,7 +265,7 @@ export function BookingProvider({ children }) {
   // StrictMode deliberately invokes updaters twice in dev to catch exactly
   // that, and doing so here would silently double-book and double-decrement
   // availability.
-  const payShare = (groupId, index) => {
+  const payShare = useCallback((groupId, index) => {
     const group = groups.find((g) => g.id === groupId);
     if (!group) return;
     const participants = group.participants.map((p, i) => (i === index ? { ...p, status: 'paid' } : p));
@@ -281,11 +281,11 @@ export function BookingProvider({ children }) {
         guests: [], departureAt: null, cancellationPolicy: 'standard', at: Date.now(),
       }));
     }
-  };
+  }, [groups]);
 
-  const lapseGroup = (groupId) => {
+  const lapseGroup = useCallback((groupId) => {
     setGroups((gs) => gs.map((g) => (g.id === groupId && g.status === 'open' ? { ...g, status: 'lapsed' } : g)));
-  };
+  }, []);
 
   // --- cancellation --------------------------------------------------------
   // `overridePct` lets a caller that already knows the correct refund rate
@@ -295,7 +295,7 @@ export function BookingProvider({ children }) {
   // function computing one from `reason`/the listing's own policy tier. It's
   // still the one, same, ordinary cancellation action every flow calls —
   // no parallel weather-refund code path, just one extra optional parameter.
-  const cancelBooking = (ref, reason, overridePct = null) => {
+  const cancelBooking = useCallback((ref, reason, overridePct = null) => {
     const booking = bookings.find((b) => b.ref === ref);
     if (!booking) return null;
     const pct = overridePct !== null
@@ -310,9 +310,9 @@ export function BookingProvider({ children }) {
     setAvail((current) => ({ ...current, [booking.tourId]: (current[booking.tourId] ?? 0) + booking.seats }));
     setBookings((bs) => bs.map((b) => (b.ref === ref ? { ...b, state: 'cancelled', refundPct: pct, refundAmount: amount, cancelReason: reason } : b)));
     return { pct, amount };
-  };
+  }, [bookings]);
 
-  const value = {
+  const value = useMemo(() => ({
     avail,
     lock,
     paymentState,
@@ -336,7 +336,12 @@ export function BookingProvider({ children }) {
     payShare,
     lapseGroup,
     cancelBooking,
-  };
+  }), [
+    avail, lock, paymentState, bookings, requests, groups,
+    startLock, setGuests, applyPromo, chooseMethod, beginCapture, expireLock, clearLock,
+    totalsFor, resolvePayment, forceOutcome, createRequest, acceptRequest, declineRequest,
+    startGroupSplit, payShare, lapseGroup, cancelBooking,
+  ]);
 
   return <BookingContext.Provider value={value}>{children}</BookingContext.Provider>;
 }

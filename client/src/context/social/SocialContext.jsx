@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { SocialContext } from './social-context';
 import { AUTO_REVIEW_AT, FAIL_MESSAGE_TRIGGER, CONTENT_STATES, COLLAB_TRANSITIONS } from './social-context';
 import { SEED_POSTS, SEED_THREADS, AUTHORS, SEED_COLLABS } from '../../data/social/social';
@@ -24,26 +24,46 @@ export function SocialProvider({ children }) {
   const [following, setFollowing] = useState(() => new Set(['karakoram-expeditions', 'amna-sheikh']));
 
   const nextId = useRef(100);
-  const genId = (prefix) => `${prefix}${nextId.current++}`;
+  const genId = useCallback((prefix) => `${prefix}${nextId.current++}`, []);
+
+  // --- follow / block ---------------------------------------------------------
+  const toggleFollow = useCallback((authorId) =>
+    setFollowing((f) => {
+      const next = new Set(f);
+      if (next.has(authorId)) next.delete(authorId); else next.add(authorId);
+      return next;
+    }), []);
+
+  // A blocked thread stays visible, greyed, read-only — the transcript is
+  // never deleted (§6 chats). Unblocking restores it in full, since nothing
+  // was ever removed, only gated from new messages.
+  const blockAccount = useCallback((authorId) => {
+    setBlocked((b) => new Set(b).add(authorId));
+    setThreads((ts) => ts.map((t) => (t.withId === authorId ? { ...t, blocked: true } : t)));
+  }, []);
+  const unblockAccount = useCallback((authorId) => {
+    setBlocked((b) => { const next = new Set(b); next.delete(authorId); return next; });
+    setThreads((ts) => ts.map((t) => (t.withId === authorId ? { ...t, blocked: false } : t)));
+  }, []);
 
   // --- posts -----------------------------------------------------------------
   // Like/save are optimistic local toggles — the design system's one other
   // named exception to "no optimistic UI on financial state" alongside
   // wishlist (§2 patterns), since neither is financial.
-  const toggleLike = (postId) =>
+  const toggleLike = useCallback((postId) =>
     setPosts((ps) => ps.map((p) => (p.id !== postId ? p : {
       ...p, likedByMe: !p.likedByMe, likes: p.likes + (p.likedByMe ? -1 : 1),
-    })));
+    }))), []);
 
-  const toggleSave = (postId) =>
+  const toggleSave = useCallback((postId) =>
     setPosts((ps) => ps.map((p) => (p.id !== postId ? p : {
       ...p, savedByMe: !p.savedByMe, saves: p.saves + (p.savedByMe ? -1 : 1),
-    })));
+    }))), []);
 
   // Announce-departure posts read live inventory at render time (via the
   // tourId they carry) and never bake seat count/price into the post itself
   // (§2 patterns) — enforced simply by never storing those fields here.
-  const createPost = ({ type, text, tags, tourId, disclosed }) => {
+  const createPost = useCallback(({ type, text, tags, tourId, disclosed }) => {
     const id = genId('p');
     setPosts((ps) => [{
       id, authorId: 'me', type, text, img: null, alt: '',
@@ -52,22 +72,22 @@ export function SocialProvider({ children }) {
       comments: [], createdAt: Date.now(),
     }, ...ps]);
     return id;
-  };
+  }, [genId]);
 
-  const addComment = (postId, text) => {
+  const addComment = useCallback((postId, text) => {
     const id = genId('c');
     setPosts((ps) => ps.map((p) => (p.id !== postId ? p : {
       ...p, comments: p.comments.concat({ id, authorId: 'me', text, state: 'live', createdAt: Date.now() }),
     })));
     return id;
-  };
+  }, [genId]);
 
   // Files a report against a post (never a comment, in this pass) and moves
   // it through CONTENT_STATES: live → reported, then reported → under_review
   // automatically once AUTO_REVIEW_AT independent reports land. "Also block
   // this account" is a deliberately separate mutation (§6 report) — either
   // can happen without the other.
-  const reportPost = (postId, reasonId, alsoBlock) => {
+  const reportPost = useCallback((postId, reasonId, alsoBlock) => {
     setPosts((ps) => ps.map((p) => {
       if (p.id !== postId) return p;
       const reportCount = p.reportCount + 1;
@@ -79,7 +99,7 @@ export function SocialProvider({ children }) {
       const post = posts.find((p) => p.id === postId);
       if (post) blockAccount(post.authorId);
     }
-  };
+  }, [posts, genId, blockAccount]);
 
   // Admin moderation decision (module 09) — the ONE mutation path for a
   // content state change, shared by the not-yet-built full admin queue and
@@ -90,7 +110,7 @@ export function SocialProvider({ children }) {
   // that same table, but this still refuses an illegal move defensively
   // rather than trusting the caller. `removed`/`restored` require a reason
   // (§3); dismissing back to `live` from `reported` does not.
-  const moderateContent = (postId, action, reason, moderatorName) => {
+  const moderateContent = useCallback((postId, action, reason, moderatorName) => {
     const post = posts.find((p) => p.id === postId);
     if (!post) return { ok: false, error: 'Post not found.' };
     const legal = CONTENT_STATES[post.moderation] || [];
@@ -103,13 +123,13 @@ export function SocialProvider({ children }) {
       appealed: action === 'removed' ? false : p.appealed,
     })));
     return { ok: true };
-  };
+  }, [posts]);
 
   // One appeal only, and it must go to a DIFFERENT moderator than whoever
   // made the original decision (§3) — enforced by name here since this app
   // has no real multi-admin identity system yet (single demo account, same
   // limitation the payout-batch two-step approval works around).
-  const appealPost = (postId, reviewerName) => {
+  const appealPost = useCallback((postId, reviewerName) => {
     const post = posts.find((p) => p.id === postId);
     if (!post) return { ok: false, error: 'Post not found.' };
     if (post.moderation !== 'removed') return { ok: false, error: 'Only a removed post can be appealed.' };
@@ -119,27 +139,7 @@ export function SocialProvider({ children }) {
     }
     setPosts((ps) => ps.map((p) => (p.id !== postId ? p : { ...p, moderation: 'restored', appealed: true, lastDecisionReason: 'Appeal upheld', lastModeratorName: reviewerName || null })));
     return { ok: true };
-  };
-
-  // --- follow / block ---------------------------------------------------------
-  const toggleFollow = (authorId) =>
-    setFollowing((f) => {
-      const next = new Set(f);
-      if (next.has(authorId)) next.delete(authorId); else next.add(authorId);
-      return next;
-    });
-
-  // A blocked thread stays visible, greyed, read-only — the transcript is
-  // never deleted (§6 chats). Unblocking restores it in full, since nothing
-  // was ever removed, only gated from new messages.
-  const blockAccount = (authorId) => {
-    setBlocked((b) => new Set(b).add(authorId));
-    setThreads((ts) => ts.map((t) => (t.withId === authorId ? { ...t, blocked: true } : t)));
-  };
-  const unblockAccount = (authorId) => {
-    setBlocked((b) => { const next = new Set(b); next.delete(authorId); return next; });
-    setThreads((ts) => ts.map((t) => (t.withId === authorId ? { ...t, blocked: false } : t)));
-  };
+  }, [posts]);
 
   // --- chats / messages --------------------------------------------------------
   // Sending → Sent → Delivered, exactly as the design system specifies (§6
@@ -147,7 +147,7 @@ export function SocialProvider({ children }) {
   // FAIL_MESSAGE_TRIGGER is a documented deterministic trigger (same spirit
   // as the auth module's magic OTP) so the Failed+retry branch is reachable
   // without a real flaky network.
-  const sendMessage = (threadId, text) => {
+  const sendMessage = useCallback((threadId, text) => {
     const id = genId('m');
     const willFail = text.toUpperCase().includes(FAIL_MESSAGE_TRIGGER);
     setThreads((ts) => ts.map((t) => (t.id !== threadId ? t : {
@@ -166,9 +166,9 @@ export function SocialProvider({ children }) {
       }
     }, 500);
     return id;
-  };
+  }, [genId]);
 
-  const retryMessage = (threadId, messageId) => {
+  const retryMessage = useCallback((threadId, messageId) => {
     setThreads((ts) => ts.map((t) => (t.id !== threadId ? t : {
       ...t, messages: t.messages.map((m) => (m.id !== messageId ? m : { ...m, state: 'sending' })),
     })));
@@ -182,80 +182,80 @@ export function SocialProvider({ children }) {
         })));
       }, 500);
     }, 500);
-  };
+  }, []);
 
   // `seedFromThem` only applies the first time a thread with `authorId` is
   // created (an existing thread is returned as-is) — used by `ai/escalation`'s
   // "Open the conversation" action to open a real thread with a single honest
   // opening line from the agent, not a fabricated ongoing conversation.
-  const startThread = (authorId, seedFromThem) => {
+  const startThread = useCallback((authorId, seedFromThem) => {
     const existing = threads.find((t) => t.withId === authorId);
     if (existing) return existing.id;
     const id = genId('t');
     const messages = seedFromThem ? [{ id: genId('m'), from: 'them', text: seedFromThem, state: 'delivered', at: Date.now() }] : [];
     setThreads((ts) => ts.concat({ id, withId: authorId, blocked: false, messages }));
     return id;
-  };
+  }, [threads, genId]);
 
   // --- collaborations (§3 collaboration lifecycle, influencer-only) ---------
   // One shared transition-checking action per legal move, same shape as
   // moderateContent above: refuses a move that isn't legal from the
   // collaboration's current status per COLLAB_TRANSITIONS rather than
   // trusting the caller.
-  const transitionCollab = (id, action, extra = {}) => {
+  const transitionCollab = useCallback((id, action, extra = {}) => {
     const collab = collabs.find((c) => c.id === id);
     if (!collab) return { ok: false, error: 'Collaboration not found.' };
     const legal = COLLAB_TRANSITIONS[collab.status] || [];
     if (!legal.includes(action)) return { ok: false, error: `"${action}" isn't a legal move from "${collab.status}".` };
     setCollabs((cs) => cs.map((c) => (c.id !== id ? c : { ...c, status: action, ...extra })));
     return { ok: true };
-  };
+  }, [collabs]);
 
-  const acceptCollab = (id) => transitionCollab(id, 'accepted', { acceptedAt: Date.now() });
-  const declineCollab = (id) => transitionCollab(id, 'declined', { declinedAt: Date.now() });
-  const startCollab = (id) => transitionCollab(id, 'in_progress', { startedAt: Date.now() });
+  const acceptCollab = useCallback((id) => transitionCollab(id, 'accepted', { acceptedAt: Date.now() }), [transitionCollab]);
+  const declineCollab = useCallback((id) => transitionCollab(id, 'declined', { declinedAt: Date.now() }), [transitionCollab]);
+  const startCollab = useCallback((id) => transitionCollab(id, 'in_progress', { startedAt: Date.now() }), [transitionCollab]);
   // 7-day notice is stated as on-screen copy rather than a real scheduled
   // effective date — same honest simplification as the room-reservation
   // one-call note in CLAUDE.md §5 (no real scheduling engine exists here);
   // the cancellation applies immediately in this demo.
-  const cancelCollab = (id) => transitionCollab(id, 'cancelled', { cancelledAt: Date.now(), cancelledBy: 'you' });
+  const cancelCollab = useCallback((id) => transitionCollab(id, 'cancelled', { cancelledAt: Date.now(), cancelledBy: 'you' }), [transitionCollab]);
 
-  const toggleDeliverable = (collabId, deliverableId, field) => {
+  const toggleDeliverable = useCallback((collabId, deliverableId, field) => {
     setCollabs((cs) => cs.map((c) => (c.id !== collabId ? c : {
       ...c,
       deliverables: c.deliverables.map((d) => (d.id !== deliverableId ? d : { ...d, [field]: !d[field] })),
     })));
-  };
+  }, []);
 
   // Only legal once every deliverable is both verified and disclosed (§3:
   // "released on verified + disclosed deliverables") — refused otherwise,
   // same defensive-refusal shape as moderateContent/transitionCollab.
-  const markDelivered = (id) => {
+  const markDelivered = useCallback((id) => {
     const collab = collabs.find((c) => c.id === id);
     if (!collab) return { ok: false, error: 'Collaboration not found.' };
     if (!collab.deliverables.every((d) => d.verified && d.disclosed)) {
       return { ok: false, error: 'Every deliverable must be verified and disclosed first.' };
     }
     return transitionCollab(id, 'delivered', { deliveredAt: Date.now() });
-  };
+  }, [collabs, transitionCollab]);
 
   // Demo-only advance (no real payment gateway) — same honestly-labeled
   // lever pattern as ShopContext.advanceFulfilment / BookingContext.forceOutcome.
-  const markPaid = (id) => transitionCollab(id, 'paid', { paidAt: Date.now() });
+  const markPaid = useCallback((id) => transitionCollab(id, 'paid', { paidAt: Date.now() }), [transitionCollab]);
 
   // Falls back to a synthesized profile for any operator slug not in the seed
   // AUTHORS map (e.g. an operator linked from a tour card that has never
   // posted) rather than crashing a profile page that only has a name to go
   // on — still real, honest data (every tour's own operator field), just not
   // pre-seeded with a social history.
-  const authorOf = (authorId) => {
+  const authorOf = useCallback((authorId) => {
     if (authorId === 'me') return { id: 'me', name: 'You', kind: 'traveller', tier: null, verified: false };
     if (AUTHORS[authorId]) return AUTHORS[authorId];
     const name = authorId.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     return { id: authorId, name, kind: 'operator', tier: null, verified: true };
-  };
+  }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     posts, reports, threads, blocked, following,
     toggleLike, toggleSave, createPost, addComment, reportPost,
     moderateContent, appealPost,
@@ -263,7 +263,15 @@ export function SocialProvider({ children }) {
     sendMessage, retryMessage, startThread,
     authorOf,
     collabs, acceptCollab, declineCollab, startCollab, cancelCollab, toggleDeliverable, markDelivered, markPaid,
-  };
+  }), [
+    posts, reports, threads, blocked, following,
+    toggleLike, toggleSave, createPost, addComment, reportPost,
+    moderateContent, appealPost,
+    toggleFollow, blockAccount, unblockAccount,
+    sendMessage, retryMessage, startThread,
+    authorOf,
+    collabs, acceptCollab, declineCollab, startCollab, cancelCollab, toggleDeliverable, markDelivered, markPaid,
+  ]);
 
   return <SocialContext.Provider value={value}>{children}</SocialContext.Provider>;
 }

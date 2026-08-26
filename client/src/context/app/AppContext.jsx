@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppContext } from './app-context';
 
 const RATES = { PKR: 1, USD: 278, AED: 76 };
@@ -38,18 +38,23 @@ export function AppProvider({ children }) {
     try { localStorage.setItem('s360-language', language); } catch { /* storage unavailable */ }
   }, [language]);
 
-  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  const toggleTheme = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), []);
 
-  const toggleWishlist = (tourId) =>
-    setWishlist((w) => (w.includes(tourId) ? w.filter((id) => id !== tourId) : w.concat(tourId)));
+  const toggleWishlist = useCallback(
+    (tourId) => setWishlist((w) => (w.includes(tourId) ? w.filter((id) => id !== tourId) : w.concat(tourId))),
+    [],
+  );
 
   // Charges always run in PKR; this only changes what is displayed.
-  const formatMoney = (pkrAmount) => {
+  const formatMoney = useCallback((pkrAmount) => {
     const rate = RATES[currency] || 1;
     const value = currency === 'PKR' ? pkrAmount : Math.round(pkrAmount / rate);
     return SYMBOLS[currency] + value.toLocaleString('en-US');
-  };
+  }, [currency]);
 
-  const value = { theme, toggleTheme, currency, setCurrency, language, setLanguage, formatMoney, wishlist, toggleWishlist };
+  const value = useMemo(
+    () => ({ theme, toggleTheme, currency, setCurrency, language, setLanguage, formatMoney, wishlist, toggleWishlist }),
+    [theme, toggleTheme, currency, language, setLanguage, formatMoney, wishlist, toggleWishlist],
+  );
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

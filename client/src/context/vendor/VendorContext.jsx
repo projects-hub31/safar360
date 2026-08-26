@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { VendorContext } from './vendor-context';
 import { GRACE_DAYS, SEED_LEDGER } from './vendor-context';
 
@@ -21,20 +21,20 @@ export function VendorProvider({ children }) {
   const nextId = useRef(1);
 
   // --- subscription --------------------------------------------------
-  const subscribe = (plan) => setSubscription((s) => ({ ...s, state: 'active', plan }));
-  const cancelSubscription = () => setSubscription((s) => ({ ...s, state: 'cancelled' }));
+  const subscribe = useCallback((plan) => setSubscription((s) => ({ ...s, state: 'active', plan })), []);
+  const cancelSubscription = useCallback(() => setSubscription((s) => ({ ...s, state: 'cancelled' })), []);
   // No live recurring billing to actually fail a charge — these are the
   // same kind of honestly-labeled testing levers as the Awaiting screen's
   // force-outcome panel (module 02), not hidden magic.
-  const simulateChargeFailure = () => setSubscription((s) => (s.state === 'active' ? { ...s, state: 'past_due' } : s));
-  const retryCharge = () => setSubscription((s) => (s.state === 'past_due' || s.state === 'suspended' ? { ...s, state: 'active' } : s));
-  const exhaustRetries = () => setSubscription((s) => (s.state === 'past_due' ? { ...s, state: 'grace', graceToken: s.graceToken + 1 } : s));
-  const onGraceExpire = () => setSubscription((s) => (s.state === 'grace' ? { ...s, state: 'suspended' } : s));
+  const simulateChargeFailure = useCallback(() => setSubscription((s) => (s.state === 'active' ? { ...s, state: 'past_due' } : s)), []);
+  const retryCharge = useCallback(() => setSubscription((s) => (s.state === 'past_due' || s.state === 'suspended' ? { ...s, state: 'active' } : s)), []);
+  const exhaustRetries = useCallback(() => setSubscription((s) => (s.state === 'past_due' ? { ...s, state: 'grace', graceToken: s.graceToken + 1 } : s)), []);
+  const onGraceExpire = useCallback(() => setSubscription((s) => (s.state === 'grace' ? { ...s, state: 'suspended' } : s)), []);
 
   // --- listings --------------------------------------------------------
-  const genId = () => `v${nextId.current++}`;
+  const genId = useCallback(() => `v${nextId.current++}`, []);
 
-  const createDraftListing = () => {
+  const createDraftListing = useCallback(() => {
     const id = genId();
     setListings((ls) => ls.concat({
       id, title: '', description: '', region: 'Gilgit-Baltistan', days: 3, price: 0,
@@ -42,21 +42,21 @@ export function VendorProvider({ children }) {
       departures: [], status: 'draft', createdAt: Date.now(),
     }));
     return id;
-  };
+  }, [genId]);
 
-  const updateListing = (id, patch) =>
-    setListings((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const updateListing = useCallback((id, patch) =>
+    setListings((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l))), []);
 
-  const addPhoto = (id) => {
+  const addPhoto = useCallback((id) => {
     setListings((ls) => ls.map((l) => {
       if (l.id !== id) return l;
       const photoId = genId();
       const photos = l.photos.concat({ id: photoId, name: `photo-${l.photos.length + 1}.jpg`, cover: l.photos.length === 0 });
       return { ...l, photos };
     }));
-  };
+  }, [genId]);
 
-  const removePhoto = (id, photoId) => {
+  const removePhoto = useCallback((id, photoId) => {
     setListings((ls) => ls.map((l) => {
       if (l.id !== id) return l;
       const wasCover = l.photos.find((p) => p.id === photoId)?.cover;
@@ -64,16 +64,16 @@ export function VendorProvider({ children }) {
       if (wasCover && photos.length) photos = photos.map((p, i) => ({ ...p, cover: i === 0 }));
       return { ...l, photos };
     }));
-  };
+  }, []);
 
-  const setCoverPhoto = (id, photoId) => {
+  const setCoverPhoto = useCallback((id, photoId) => {
     setListings((ls) => ls.map((l) => (l.id === id ? { ...l, photos: l.photos.map((p) => ({ ...p, cover: p.id === photoId })) } : l)));
-  };
+  }, []);
 
   // Exact gate formula, CLAUDE.md §6 vendor/gate — checked live, not just at
   // wizard-submit time, so the Gate/Review screens can explain a block
   // whenever the vendor looks (Law 4), not only the moment they clicked.
-  const publishGate = (listing, { kycApproved, subOk }) => {
+  const publishGate = useCallback((listing, { kycApproved, subOk }) => {
     const blockers = [];
     if (!kycApproved) blockers.push('Identity verification (KYC) is not approved yet');
     if (!subOk) blockers.push('Your subscription needs to be active or in its grace period');
@@ -81,27 +81,27 @@ export function VendorProvider({ children }) {
     if (!(listing.price > 0)) blockers.push('Set a price per person');
     if (listing.departures.length < 1) blockers.push('Add at least one departure in Availability');
     return blockers;
-  };
+  }, []);
 
-  const publishListing = (id, gateInputs) => {
+  const publishListing = useCallback((id, gateInputs) => {
     const listing = listings.find((l) => l.id === id);
     if (!listing) return { ok: false, blockers: ['Listing not found'] };
     const blockers = publishGate(listing, gateInputs);
     if (blockers.length) return { ok: false, blockers };
     updateListing(id, { status: 'published' });
     return { ok: true, blockers: [] };
-  };
+  }, [listings, publishGate, updateListing]);
 
   // --- availability (per-listing departures) ----------------------------
-  const addDeparture = (listingId, { date, seats }) => {
+  const addDeparture = useCallback((listingId, { date, seats }) => {
     setListings((ls) => ls.map((l) => (l.id === listingId
       ? { ...l, departures: l.departures.concat({ id: genId(), date, seats, booked: 0, blackout: false }) }
       : l)));
-  };
+  }, [genId]);
 
   // Hard floor at `booked` (§6 vendor/availability) — never lets the cap
   // drop below travellers who already paid for that date.
-  const setDepartureSeats = (listingId, depId, seats) => {
+  const setDepartureSeats = useCallback((listingId, depId, seats) => {
     let refused = null;
     setListings((ls) => ls.map((l) => {
       if (l.id !== listingId) return l;
@@ -115,17 +115,17 @@ export function VendorProvider({ children }) {
       };
     }));
     return refused === null ? { ok: true } : { ok: false, floor: refused };
-  };
+  }, []);
 
-  const toggleBlackout = (listingId, depId) => {
+  const toggleBlackout = useCallback((listingId, depId) => {
     setListings((ls) => ls.map((l) => (l.id === listingId
       ? { ...l, departures: l.departures.map((d) => (d.id === depId ? { ...d, blackout: !d.blackout } : d)) }
       : l)));
-  };
+  }, []);
 
   // --- payouts -----------------------------------------------------------
-  const setLedgerRowState = (id, state) =>
-    setLedger((rows) => rows.map((r) => (r.id === id ? { ...r, state } : r)));
+  const setLedgerRowState = useCallback((id, state) =>
+    setLedger((rows) => rows.map((r) => (r.id === id ? { ...r, state } : r))), []);
 
   // Claws back an already-accrued commission (§3 Ledger — "a refund reverses
   // the accrual with it"). Same action a weather cancellation, a dispute
@@ -134,16 +134,23 @@ export function VendorProvider({ children }) {
   // other, seeded, multi-vendor rows mirror this exact state transition
   // locally rather than reaching into a specific vendor's context (see
   // CLAUDE.md's module 09 note on the single-demo-account limitation).
-  const reverseLedger = (id) => setLedgerRowState(id, 'reversed');
+  const reverseLedger = useCallback((id) => setLedgerRowState(id, 'reversed'), [setLedgerRowState]);
 
-  const value = {
+  const value = useMemo(() => ({
     subscription, subscribe, cancelSubscription, simulateChargeFailure,
     retryCharge, exhaustRetries, onGraceExpire, graceDays: GRACE_DAYS,
     listings, createDraftListing, updateListing, addPhoto, removePhoto, setCoverPhoto,
     publishGate, publishListing,
     addDeparture, setDepartureSeats, toggleBlackout,
     ledger, setLedgerRowState, reverseLedger,
-  };
+  }), [
+    subscription, subscribe, cancelSubscription, simulateChargeFailure,
+    retryCharge, exhaustRetries, onGraceExpire,
+    listings, createDraftListing, updateListing, addPhoto, removePhoto, setCoverPhoto,
+    publishGate, publishListing,
+    addDeparture, setDepartureSeats, toggleBlackout,
+    ledger, setLedgerRowState, reverseLedger,
+  ]);
 
   return <VendorContext.Provider value={value}>{children}</VendorContext.Provider>;
 }

@@ -1,6 +1,8 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AppShell from './components/layout/AppShell';
+import RequireAuth from './components/layout/RequireAuth';
+import RequireRole from './components/layout/RequireRole';
 
 // Route-level code-splitting: each module below becomes its own chunk,
 // fetched only when a traveller actually navigates into that role's
@@ -63,6 +65,7 @@ const Rooms = lazy(() => import('./pages/transport/Rooms'));
 const Menu = lazy(() => import('./pages/transport/Menu'));
 const Enquiries = lazy(() => import('./pages/transport/Enquiries'));
 const Featured = lazy(() => import('./pages/transport/Featured'));
+const TransportMoney = lazy(() => import('./pages/transport/Money'));
 
 const Catalog = lazy(() => import('./pages/shop/Catalog'));
 const Product = lazy(() => import('./pages/shop/Product'));
@@ -75,6 +78,7 @@ const Returns = lazy(() => import('./pages/shop/Returns'));
 const SellerProducts = lazy(() => import('./pages/shop/SellerProducts'));
 const Fulfilment = lazy(() => import('./pages/shop/Fulfilment'));
 const SellerReturns = lazy(() => import('./pages/shop/SellerReturns'));
+const SellerPayouts = lazy(() => import('./pages/shop/SellerPayouts'));
 
 const Feed = lazy(() => import('./pages/social/Feed'));
 const Composer = lazy(() => import('./pages/social/Composer'));
@@ -123,106 +127,148 @@ const App = () => {
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route element={<AppShell />}>
+          {/* Public — the one role with a no-account browsing surface (§5),
+              plus the identity flow itself and content that reads like a
+              public feed/profile rather than an account page. */}
           <Route index element={<Navigate to="/discover/home" replace />} />
           <Route path="discover/home" element={<Home />} />
           <Route path="discover/search" element={<Search />} />
           <Route path="discover/tour/:id" element={<TourDetail />} />
           <Route path="discover/property" element={<PropertyDetail />} />
-          <Route path="discover/wishlist" element={<Wishlist />} />
-          <Route path="discover/profile" element={<Profile />} />
           <Route path="discover/transport" element={<Transport />} />
-          <Route path="discover/enquiries" element={<MyEnquiries />} />
           <Route path="identity/role" element={<RoleSelect />} />
           <Route path="identity/register" element={<Register />} />
           <Route path="identity/login" element={<Login />} />
           <Route path="identity/otp" element={<Otp />} />
           <Route path="identity/otp-exhausted" element={<OtpExhausted />} />
-          <Route path="identity/kyc" element={<Kyc />} />
-          <Route path="identity/kyc-pending" element={<KycPending />} />
-          <Route path="identity/kyc-approved" element={<KycApproved />} />
-          <Route path="identity/kyc-rejected" element={<KycRejected />} />
-          <Route path="booking/checkout" element={<Checkout />} />
-          <Route path="booking/gateway" element={<Gateway />} />
-          <Route path="booking/awaiting" element={<Awaiting />} />
-          <Route path="booking/confirmed" element={<Confirmed />} />
-          <Route path="booking/expired" element={<Outcome kind="expired" />} />
-          <Route path="booking/failed" element={<Outcome kind="failed" />} />
-          <Route path="booking/held" element={<Outcome kind="held" />} />
-          <Route path="booking/sold-out" element={<Outcome kind="sold-out" />} />
-          <Route path="booking/late-webhook" element={<Outcome kind="late" />} />
-          <Route path="booking/declined" element={<Outcome kind="declined" />} />
-          <Route path="booking/awaiting-accept" element={<AwaitingAccept />} />
-          <Route path="booking/group-split" element={<GroupSplit />} />
-          <Route path="booking/participant/:groupId/:index" element={<Participant />} />
-          <Route path="booking/history" element={<History />} />
-          <Route path="booking/cancel/:ref" element={<Cancel />} />
-          <Route path="vendor/dashboard" element={<Dashboard />} />
-          <Route path="vendor/plans" element={<Plans />} />
-          <Route path="vendor/subscribe" element={<Subscribe />} />
-          <Route path="vendor/grace" element={<Grace />} />
-          <Route path="vendor/listings" element={<Listings />} />
-          <Route path="vendor/availability" element={<Availability />} />
-          <Route path="vendor/inbox" element={<Inbox />} />
-          <Route path="vendor/booking" element={<VendorBookingDetail />} />
-          <Route path="vendor/payouts" element={<Payouts />} />
-          <Route path="vendor/payout" element={<PayoutDetail />} />
-          <Route path="vendor/gate" element={<Gate />} />
-          <Route path="vendor/analytics" element={<Analytics />} />
-          <Route path="transport/vehicles" element={<Vehicles />} />
-          <Route path="transport/routes" element={<TransportRoutes />} />
-          <Route path="transport/quotes" element={<Quotes />} />
-          <Route path="transport/quote" element={<Quote />} />
-          <Route path="transport/permits" element={<Permits />} />
-          <Route path="transport/property" element={<Property />} />
-          <Route path="transport/rooms" element={<Rooms />} />
-          <Route path="transport/menu" element={<Menu />} />
-          <Route path="transport/enquiries" element={<Enquiries />} />
-          <Route path="transport/featured" element={<Featured />} />
           <Route path="shop/catalog" element={<Catalog />} />
           <Route path="shop/product/:id" element={<Product />} />
-          <Route path="shop/cart" element={<Cart />} />
-          <Route path="shop/checkout" element={<ShopCheckout />} />
-          <Route path="shop/order" element={<Order />} />
-          <Route path="shop/tracking/:ref?" element={<Tracking />} />
-          <Route path="shop/returns/:ref/:subOrderId" element={<Returns />} />
-          <Route path="shop/seller-products" element={<SellerProducts />} />
-          <Route path="shop/fulfilment" element={<Fulfilment />} />
-          <Route path="shop/returns" element={<SellerReturns />} />
-          <Route path="shop/expired" element={<ShopOutcome kind="expired" />} />
-          <Route path="shop/failed" element={<ShopOutcome kind="failed" />} />
-          <Route path="shop/held" element={<ShopOutcome kind="held" />} />
-          <Route path="shop/sold-out" element={<ShopOutcome kind="sold-out" />} />
           <Route path="social/feed" element={<Feed />} />
-          <Route path="social/composer" element={<Composer />} />
+          <Route path="social/explore" element={<Explore />} />
           <Route path="social/post/:id" element={<Post />} />
           <Route path="social/profile/:id?" element={<SocialProfile />} />
-          <Route path="social/chats" element={<Chats />} />
-          <Route path="social/thread/:id" element={<Thread />} />
-          <Route path="social/report/:targetType/:targetId" element={<Report />} />
-          <Route path="social/campaigns" element={<Campaigns />} />
-          <Route path="social/collab/:id" element={<Collab />} />
-          <Route path="social/referrals" element={<Referrals />} />
-          <Route path="social/explore" element={<Explore />} />
-          <Route path="ai/planner" element={<Planner />} />
-          <Route path="ai/itinerary" element={<Itinerary />} />
-          <Route path="ai/saved" element={<Saved />} />
-          <Route path="ai/chatbot" element={<Chatbot />} />
           <Route path="ai/map" element={<AiMap />} />
           <Route path="ai/landmark/:id" element={<Landmark />} />
-          <Route path="ai/geofence/:landmarkId" element={<Geofence />} />
-          <Route path="ai/tracking/:ref?" element={<AiTracking />} />
-          <Route path="ai/escalation" element={<Escalation />} />
-          <Route path="ai/weather" element={<Weather />} />
-          <Route path="admin/console" element={<Console />} />
-          <Route path="admin/kyc" element={<AdminKyc />} />
-          <Route path="admin/moderation" element={<Moderation />} />
-          <Route path="admin/ledger" element={<Ledger />} />
-          <Route path="admin/payout-batch" element={<PayoutBatch />} />
-          <Route path="admin/disputes" element={<Disputes />} />
-          <Route path="admin/fraud" element={<Fraud />} />
-          <Route path="admin/analytics" element={<AdminAnalytics />} />
-          <Route path="admin/config" element={<Config />} />
-          <Route path="admin/audit" element={<Audit />} />
+          {/* A group-split participant has no account at all by design (§3:
+              "a participant with no account at all can still pay their
+              share through the guest pay-link") — this must stay public. */}
+          <Route path="booking/participant/:groupId/:index" element={<Participant />} />
+
+          {/* Everything below needs a signed-in account (§8: "nothing stops
+              a signed-out user from hitting /identity/kyc directly" was the
+              flagged gap this closes). */}
+          <Route element={<RequireAuth />}>
+            <Route path="discover/wishlist" element={<Wishlist />} />
+            <Route path="discover/profile" element={<Profile />} />
+            <Route path="discover/enquiries" element={<MyEnquiries />} />
+            <Route path="identity/kyc" element={<Kyc />} />
+            <Route path="identity/kyc-pending" element={<KycPending />} />
+            <Route path="identity/kyc-approved" element={<KycApproved />} />
+            <Route path="identity/kyc-rejected" element={<KycRejected />} />
+            <Route path="booking/checkout" element={<Checkout />} />
+            <Route path="booking/gateway" element={<Gateway />} />
+            <Route path="booking/awaiting" element={<Awaiting />} />
+            <Route path="booking/confirmed" element={<Confirmed />} />
+            <Route path="booking/expired" element={<Outcome kind="expired" />} />
+            <Route path="booking/failed" element={<Outcome kind="failed" />} />
+            <Route path="booking/held" element={<Outcome kind="held" />} />
+            <Route path="booking/sold-out" element={<Outcome kind="sold-out" />} />
+            <Route path="booking/late-webhook" element={<Outcome kind="late" />} />
+            <Route path="booking/declined" element={<Outcome kind="declined" />} />
+            <Route path="booking/awaiting-accept" element={<AwaitingAccept />} />
+            <Route path="booking/group-split" element={<GroupSplit />} />
+            <Route path="booking/history" element={<History />} />
+            <Route path="booking/cancel/:ref" element={<Cancel />} />
+            <Route path="shop/cart" element={<Cart />} />
+            <Route path="shop/checkout" element={<ShopCheckout />} />
+            <Route path="shop/order" element={<Order />} />
+            <Route path="shop/tracking/:ref?" element={<Tracking />} />
+            <Route path="shop/returns/:ref/:subOrderId" element={<Returns />} />
+            <Route path="shop/expired" element={<ShopOutcome kind="expired" />} />
+            <Route path="shop/failed" element={<ShopOutcome kind="failed" />} />
+            <Route path="shop/held" element={<ShopOutcome kind="held" />} />
+            <Route path="shop/sold-out" element={<ShopOutcome kind="sold-out" />} />
+            <Route path="social/composer" element={<Composer />} />
+            <Route path="social/chats" element={<Chats />} />
+            <Route path="social/thread/:id" element={<Thread />} />
+            <Route path="social/report/:targetType/:targetId" element={<Report />} />
+            <Route path="ai/planner" element={<Planner />} />
+            <Route path="ai/itinerary" element={<Itinerary />} />
+            <Route path="ai/saved" element={<Saved />} />
+            <Route path="ai/chatbot" element={<Chatbot />} />
+            <Route path="ai/geofence/:landmarkId" element={<Geofence />} />
+            <Route path="ai/tracking/:ref?" element={<AiTracking />} />
+            <Route path="ai/escalation" element={<Escalation />} />
+
+            {/* Actor-scoped screens — the single demo account's "Acting as"
+                role switcher (§7) decides which of these are reachable at
+                any moment, same idea as the admin sub-role's PermGate. */}
+            <Route element={<RequireRole role="operator" />}>
+              <Route path="vendor/dashboard" element={<Dashboard />} />
+              <Route path="vendor/plans" element={<Plans />} />
+              <Route path="vendor/subscribe" element={<Subscribe />} />
+              <Route path="vendor/grace" element={<Grace />} />
+              <Route path="vendor/listings" element={<Listings />} />
+              <Route path="vendor/availability" element={<Availability />} />
+              <Route path="vendor/inbox" element={<Inbox />} />
+              <Route path="vendor/booking" element={<VendorBookingDetail />} />
+              <Route path="vendor/payouts" element={<Payouts />} />
+              <Route path="vendor/payout" element={<PayoutDetail />} />
+              <Route path="vendor/gate" element={<Gate />} />
+              <Route path="vendor/analytics" element={<Analytics />} />
+              {/* Weather.jsx is operator-facing despite the ai/ prefix (§8:
+                  "the spec has the operator, not the traveller, deciding"). */}
+              <Route path="ai/weather" element={<Weather />} />
+            </Route>
+
+            <Route element={<RequireRole role="transport" />}>
+              <Route path="transport/vehicles" element={<Vehicles />} />
+              <Route path="transport/routes" element={<TransportRoutes />} />
+              <Route path="transport/quotes" element={<Quotes />} />
+              <Route path="transport/quote" element={<Quote />} />
+              <Route path="transport/permits" element={<Permits />} />
+              <Route path="transport/featured" element={<Featured />} />
+              <Route path="transport/money" element={<TransportMoney />} />
+            </Route>
+
+            <Route element={<RequireRole role="property" />}>
+              <Route path="transport/property" element={<Property />} />
+              <Route path="transport/rooms" element={<Rooms />} />
+              <Route path="transport/menu" element={<Menu />} />
+              <Route path="transport/enquiries" element={<Enquiries />} />
+            </Route>
+
+            <Route element={<RequireRole role="seller" />}>
+              <Route path="shop/seller-products" element={<SellerProducts />} />
+              <Route path="shop/fulfilment" element={<Fulfilment />} />
+              <Route path="shop/returns" element={<SellerReturns />} />
+              <Route path="shop/seller-payouts" element={<SellerPayouts />} />
+            </Route>
+
+            <Route element={<RequireRole role="influencer" />}>
+              <Route path="social/campaigns" element={<Campaigns />} />
+              <Route path="social/collab/:id" element={<Collab />} />
+              <Route path="social/referrals" element={<Referrals />} />
+            </Route>
+
+            {/* Admin sub-role permission checks already happen one level
+                deeper inside each page via PermGate (kyc/moderation/ledger/
+                payout-batch/disputes/fraud/config/audit) — this only needs
+                to gate "signed in and acting as admin" at all. */}
+            <Route element={<RequireRole role="admin" />}>
+              <Route path="admin/console" element={<Console />} />
+              <Route path="admin/kyc" element={<AdminKyc />} />
+              <Route path="admin/moderation" element={<Moderation />} />
+              <Route path="admin/ledger" element={<Ledger />} />
+              <Route path="admin/payout-batch" element={<PayoutBatch />} />
+              <Route path="admin/disputes" element={<Disputes />} />
+              <Route path="admin/fraud" element={<Fraud />} />
+              <Route path="admin/analytics" element={<AdminAnalytics />} />
+              <Route path="admin/config" element={<Config />} />
+              <Route path="admin/audit" element={<Audit />} />
+            </Route>
+          </Route>
+
           <Route path="*" element={<ComingSoon />} />
         </Route>
       </Routes>

@@ -1,7 +1,6 @@
 export { default as BarChart } from './BarChart';
 export { default as Button } from './Button';
 export { default as Card } from './Card';
-export { default as ChoiceCard } from './ChoiceCard';
 export { default as Countdown } from './Countdown';
 export { default as DataTable } from './DataTable';
 export { default as EmptyState } from './EmptyState';
