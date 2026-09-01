@@ -1,0 +1,10 @@
+const express = require("express");
+const adminConfigRoutes = require("./admin/config.routes");
+
+const router = express.Router();
+
+// Every module mounts its own routes/<module>/*.routes.js here as it's built —
+// this file stays the one place that wires the module tree together.
+router.use("/admin", adminConfigRoutes);
+
+module.exports = router;

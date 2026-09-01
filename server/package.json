@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "seed:policy": "node src/seeds/policy.seed.js"
   },
   "keywords": [],
   "author": "",

@@ -18,6 +18,20 @@ layer first. Only once the frontend is complete across all 9 modules does work m
 real `fetch()` calls). This is a deliberate, explicit instruction from the user — don't
 silently start backend work while frontend modules are still outstanding.
 
+**Frontend phase closed out 2026-09-01.** Re-verified directly (not just by reading this
+file's own log): `npm run lint` and `npm run build` both clean in `client/`, and the only
+surviving `ComingSoon` reference in `App.jsx` is the catch-all `path="*"` 404 route — no
+real screen falls through to it. All 9 modules' routes are wired per §5/§8. Residual,
+non-blocking items noted in §8 items 9–12 (a few click-throughs not yet re-confirmed
+in-browser after refactors — Suspense fallback on route transitions, Ledger/Payout-batch/
+Analytics walk-through, quick-sign-in panel) are cosmetic/verification gaps, not missing
+functionality, and don't block backend work. **One piece of repo hygiene to close before
+starting backend branches**: `client/` carries its own nested `.git` (separate from
+`safar360/`'s), and as of this date has uncommitted changes from the last frontend pass
+(route guards, quick sign-in, the two new Money screens — §8 items 11–12) — commit those
+in `client/`'s own repo before branching for backend work, or they'll look like backend-
+era changes in history later. Backend build plan starts at §9 below.
+
 **Source wireframes:** `~/Downloads/genie(new project)/Safar360 Complete Wire Frames/`
 (`index.html`, `safar360-app.html`, `safar360-design-system.html`). These are large
 (~1–5MB) self-contained bundles — a custom packer stores gzip+base64 modules inside a
@@ -1878,7 +1892,170 @@ not just re-skinned.
 
 ---
 
-## 9. Open questions inherited from the wireframe spec
+## 9. Backend build plan — traveller-first, 2 devs, ~18 working days (20-day ceiling)
+
+**Started 2026-09-01.** The frontend pass (§8) already did the hard design work: every
+state machine in §3 is fully worked out and every context's mock actions already return
+the exact `{ ok, ... }`/`{ kind, ... }` shape a real `fetch()` would (§7). Backend work is
+therefore mostly **porting already-correct logic to the server and swapping fetch calls
+in**, not re-deriving business rules from scratch — that's what makes ~18 days for 9
+modules realistic for two people. Two rules carry over unchanged from the frontend phase:
+
+1. **Traveller-first, sequential for the core, parallel after.** Auth → discovery →
+   booking/payment is one dependency chain every other module sits on top of (a vendor
+   needs KYC/auth to exist, gear checkout reuses the payment/webhook machine booking
+   builds, admin reads everything). Build that chain first, with both devs pairing on it
+   — it's the highest-risk part (soft locks, atomic inventory, webhook race conditions)
+   and the part every later module either depends on or literally reuses. Only after it
+   is real and verified do the two devs split onto independent modules.
+2. **Integrate as you go, per module — no big-bang rewire at the end.** The moment a
+   module's routes exist, swap that module's context actions from mock bodies to real
+   `fetch()` calls and verify the flow in-browser (same standard §8's entries hold
+   themselves to: click through the real screens, check the console, confirm state
+   actually persists across a reload) before starting the next module. This is exactly
+   why the mock functions were shaped the way they were (§7) — a calling component
+   should never need to change, only the function body. Waiting until all 9 backends
+   exist to wire any of them risks discovering a shape mismatch nine times at once
+   instead of once each.
+
+### Server structure (build this first, day 1)
+
+`server/` is currently a bare skeleton (`server.js` only, empty `controllers`/`models`/
+`view`). Restructure to mirror the client's per-module convention (§7's "one convention,
+four directories") rather than inventing a new layout:
+
+```
+server/
+  server.js                    entry point — env load, DB connect, mount routes, listen
+  src/
+    config/
+      db.js                    mongoose.connect, exits process on failure (fail loud, not silent)
+      env.js                   reads/validates process.env, one place, never `process.env.X` scattered around
+    middleware/
+      auth.js                  requireAuth — verifies JWT, attaches req.user
+      requireRole.js           requireRole('operator', 'admin', ...) — server-side twin of
+                                the client's RequireRole guard (§8 item 11) — this is the
+                                real security control; the client gate is UX only (§2 law)
+      errorHandler.js          one JSON error shape: { ok: false, error: { code, message } }
+      rateLimiter.js           per-phone-number sign-in throttle (§4)
+    models/                    one file per collection, per §4's suggested list
+    routes/<module>/           identity, discover, booking, vendor, transport, shop, social, ai, admin
+    controllers/<module>/      mirrors routes/ 1:1
+    services/                  cross-module logic that isn't a route handler:
+      lock.service.js          soft-lock create/check/release (§ below — TTL-based)
+      payment-gateway.mock.js  simulated gateway + async webhook fire (§ below)
+      ledger.service.js        accrueCommission / reverseLedger — one implementation,
+                                every module that touches money calls this, never a
+                                second copy (§3 ledger is explicitly "6 states, not 3,
+                                one shape" — the service layer should mirror that)
+    utils/
+      reference-numbers.js     SFR-/ORD-/pay_/LG-/GB- generators (§4) — build once, reuse
+      validators.js            CNIC regex etc. — mirrors client/src/utils/validators.js
+                                so the same rule lives on both sides, not just the client
+```
+
+Response shape convention: every endpoint returns `{ ok: true, data }` on success or
+`{ ok: false, error: { code, message } }` on failure — deliberately the same envelope
+shape the mocked context actions already use (§7), so the eventual `fetch()` swap is a
+mechanical change, not a reinterpretation.
+
+**Soft locks**: §4 frames these as TTL keys, Redis-first with a Mongo TTL index as
+fallback. Since Redis isn't provisioned yet and adding new infra on day 1 is its own risk,
+default to a **Mongo TTL index** (a `Lock` collection with an `expiresAt` field and a
+`{ expireAfterSeconds: 0 }` index) unless the team already has Redis available — note
+this as a decision to make explicitly on day 1, not silently default without saying so.
+
+**Payment gateway**: there is no real gateway integrated (Stripe/JazzCash/etc. are out of
+scope for this pass — confirm with the user if that changes). Build
+`services/payment-gateway.mock.js`: a charge request returns `pending` immediately, then
+asynchronously (a few seconds later) fires a signed request to the app's own
+`POST /api/webhooks/payment`, going through the **real** 3x/30s signature-verification-
+retry path (§4) rather than skipping it. Keep the same deterministic test triggers the
+client already established (§7: card `4000000000000002` → declined,
+`4100000000000019` → held, wallet number ending `0000` → declined, total ≥ Rs 400,000 →
+held) so existing manual test steps keep working once the client is wired to real calls.
+
+### Day-by-day
+
+| Days | Dev A | Dev B | Milestone |
+|---|---|---|---|
+| **1** | Server restructure (above), DB connect, error/response middleware, `Policy` model (§3's 7 fields) + seed script, reference-number utils | `User` model (7 roles + `adminRole` sub-role, phone/email, `passwordHash`, `kycStatus`), `requireAuth`/`requireRole` middleware, route stubs for register/login/otp | `npm run dev` boots, DB connects, `/api/health` 200, `Policy` seeded and readable |
+| **2–3** | Both, paired | Both, paired | Full identity backend: register, login, OTP (6-digit/5-min TTL/5 attempts/15-min lockout, email fallback on provider-down), JWT access+refresh with rotation-theft detection (§4: a reused refresh token revokes every session), password reset (code, never a password), per-phone rate limiting, KYC document endpoints (states `pending→approved\|rejected`, 4 fixed rejection reasons, per-document resubmission not full re-upload). **Swap `AuthContext`** — verify register→OTP→login and the KYC wizard in-browser against real endpoints. |
+| **4–7** | Both, paired | Both, paired | Discovery + booking/payment core — the highest-risk chain, build together: `Tour`/`Listing` model (bookingMode + cancellationPolicy per listing, §3, not global), seed-migrate `data/traveler/tours.js`, search/filter/sort; soft-lock service; atomic seat deduction (`findOneAndUpdate` + `$gte` filter, §3's exact shape, null result → sold-out/late-webhook path, never oversell); mock gateway + webhook verification retry; `Booking` model covering all six outcome branches; refund-tier calculator reading each listing's own policy; request-to-book (24h window, no seat touched until accept); group-split (all-or-nothing, full refund on lapse). **Swap `BookingContext`** and discovery's data source — verify the full instant-booking path, request-to-book, group-split, and a cancellation refund end-to-end in-browser, plus a genuine two-tab race to confirm sold-out/late-webhook now happen for real instead of via the client's force-outcome panel (§7). |
+| **8–9** | **Vendor backend** — subscription state machine (§3's 5-state graph incl. `past_due`/`grace`/`suspended` timers), listing CRUD + `publishGate`, per-listing departures, `LedgerRow` model + `ledger.service.js` (build the shared ledger service here — payouts are its first real consumer). Swap `VendorContext`, verify listing wizard → publish → payout math in-browser. | **Transport & property backend** — `Vehicle`/`Permit`/`Quote`/`Lead` models, the shared lead lifecycle (§3: request→quoted→accepted/expired/withdrawn, no money/inventory before accepted), room reservations (reuses the booking module's payment path, not a parallel one). Swap `TransportContext`, verify a quote round-trip and a real room reservation in-browser. | Vendor and transport/property both real; ledger service exists for later modules to reuse |
+| **10–11** | **Commerce (gear) backend** — `Product`/`Order`/`SubOrder`/stock model, cart→checkout reusing the *same* payment/webhook machine from days 4–7 (§3: "one shared machine... only what capture touches differs"), coupon `result`-enum validation, per-seller shipping (Rs 350/parcel), COD two-condition block, 3-step fulfilment, returns (free-vs-Rs-350 shipping by fault). Swap `ShopContext`, verify a multi-seller checkout and a return in-browser. | **Social backend** — `Post`/`Comment`/`Thread`/`Report` models, the shared `REPORT_REASONS`/`CONTENT_STATES` registry (build this as the one table admin's moderation queue will import later, §3 — not a second copy), messaging with Sending→Sent→Delivered states, block/unblock. Swap `SocialContext`, verify posting, reporting, and a real chat thread in-browser. | Gear commerce and social both real |
+| **12–13** | **AI backend** — port the planner's interest/rating/budget sort to read the real `Tour` collection server-side, chatbot tool-call endpoints (`getForecast`/`getRoadStatus` reading a small seeded lookup, same honest-uncertainty-disclosure rule, §3), escalation ticket creation (`buildScopedContext` ported server-side so the exclusion list — CNIC, card number, other bookings, saved cards — is enforced by the API, not just client-side courtesy), weather decision endpoint (calls the *same* `cancelBooking`+`reverseLedger` service functions, no parallel refund path). Swap `AiContext`, verify planner/chatbot/weather-cancel in-browser. | **Referral & collaboration backend** — extends `ledger.service.js` (built days 8–9) with `kind: 'referral'` rows, last-click 30-day attribution firing only from the verified-capture point, paid-on-completion-not-booking; `Collaboration` model with the exact `invited→accepted→in_progress→delivered→paid` transition table enforced server-side (illegal moves refused, not just unoffered — mirrors `CONTENT_STATES`'s pattern), `verified`+`disclosed` booleans gating `markDelivered`, `INFLUENCER_PLATFORM_FEE_PCT`-style constant applied once at the service layer, not duplicated. Swap the referral/collab pieces of `SocialContext`, verify a full collab lifecycle in-browser. | AI and referral/collaboration both real; ledger service now has both its consumers |
+| **14–16** | Both, paired | Both, paired | **Admin backend** — built last and together deliberately, since it's the one module that reads every other module's data rather than owning its own: RBAC middleware (`adminRole` matrix from §3, enforced by route-level absence — a denied endpoint 404s or 403s, the response for a hidden nav item is never "here but disabled"), KYC/moderation queues (real, reading Identity/Social), ledger view (merges every module's real `LedgerRow`s — no more seeded `PLATFORM_LEDGER_EXTRA`), fraud scoring as a weighted-factor table (not a scalar column) reading `policy.fraudThreshold` live, payout batch two-step approval enforced by identity (preparer ≠ approver, checked against the authenticated user, not just a role check), disputes reading a real cross-module event timeline, audit log middleware on every mutating admin action. Swap `AdminContext` entirely, verify RBAC nav-by-absence, a real fraud hold→refund, and a real two-approver payout batch in-browser. |
+| **17–18** | Both | Both | **Integration hardening** — real JWT-backed route guards replacing the client's role-switcher-only gates (§8 item 11 becomes real auth, not just UX); a genuine concurrent-request test against the atomic seat/stock deduction; full regression across all 9 modules, light+dark, zero console errors; decide the fate of the client-only testing levers (`forceOutcome`, `quickSignIn`, KYC preview links) — gate behind a dev-only flag or leave clearly labeled, don't silently ship them as real capabilities; update this file's own log the way §8's entries do, per module, as each is verified — not one summary at the very end. |
+| **19–20** | — | — | **Buffer.** Deployment config (hosting for `server/`, MongoDB Atlas production cluster, env secrets), anything that slipped from days 1–18, final QA pass. |
+
+This assumes both devs are working the chain days 1–7 together (the riskiest 40% of the
+schedule) and split cleanly afterward — if that pairing turns out to run long, it eats
+into the buffer at the end, not into a later module's time, since days 8+ are genuinely
+independent per-column work.
+
+### Today's tasks (day 1 — do these now)
+
+Two tracks, one person each, so both land by end of day and tomorrow's identity build has
+something to start from:
+
+**Track 1 — server skeleton & DB**
+1. Restructure `server/` into the `src/{config,middleware,models,routes,controllers,
+   services,utils}` layout above; move the bare route out of `server.js` into this
+   structure.
+2. `config/db.js` — Mongoose connect against `process.env.MONGODB_URI`, fail loud (exit
+   the process) if it can't connect rather than serving with no DB.
+3. `.env.example` in `server/` (already gitignored — confirm `.env` itself never gets
+   committed) with `MONGODB_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT`.
+4. `middleware/errorHandler.js` + the `{ ok, data }`/`{ ok:false, error }` response
+   envelope convention (above) — apply it to the existing `GET /` route as the first
+   example.
+5. `Policy` model (singleton, §3's 7 fields) + a seed script, and `GET /api/admin/config`
+   returning it — this unblocks every later module that reads policy live instead of
+   hardcoding a threshold.
+
+**Track 2 — auth foundation**
+1. `User` model: `role` enum (`traveller`/`operator`/`transport`/`property`/`seller`/
+   `influencer`/`admin`), `adminRole` (`super`/`sub`/`finance`, admin only), phone,
+   email, `passwordHash` (bcrypt), `kycStatus`, timestamps.
+2. `middleware/auth.js` (`requireAuth` — verify JWT, attach `req.user`) and
+   `middleware/requireRole.js` — the real server-side enforcer behind the client's
+   existing `RequireAuth`/`RequireRole` guards (§8 item 11), since per §2's own stated
+   law the UI gate is never the security control.
+3. Route stubs for `POST /api/auth/register`, `/login`, `/otp/verify` — return-shape-
+   correct responses first (even hardcoded), real bcrypt/JWT/OTP logic is tomorrow's
+   full build.
+
+**End-of-day-1 goal**: `npm run dev` boots clean, MongoDB connects, `/api/health` returns
+200, `Policy` is seeded and fetchable, `User` model and auth middleware exist and are
+ready for tomorrow's full identity build (day 2–3 above).
+
+**Track 1 — done, 2026-09-01.** Built the full structure above: `config/env.js` (loads
+`.env`, fails loud if `MONGODB_URI` is missing, warns — doesn't block — if the JWT
+secrets aren't set yet), `config/db.js` (connects, `process.exit(1)` on failure),
+`utils/ApiError.js` + `utils/respond.js` + `middleware/errorHandler.js` (the
+`{ ok:true, data }` / `{ ok:false, error }` envelope, applied to `GET /` and
+`GET /api/health`), `models/Policy.js` (singleton via `getSingleton()`, all 7 admin
+fields + the 2 read-only weather fields, §3's exact ranges as schema `min`/`max`), the
+`routes/index.js` → `routes/admin/config.routes.js` → `controllers/admin/
+config.controller.js` chain (`GET /api/admin/config`), and `seeds/policy.seed.js`
+(`npm run seed:policy`). Old empty root-level `controllers/`/`models/`/`view/` removed
+— superseded by `src/`. **Verified**: every new file passes `node --check` (syntax-clean);
+ran the server against a deliberately unreachable Mongo URI and confirmed it logs the
+failure and exits with code 1 rather than serving requests with no DB (the fail-loud
+path is real, not just written). **Not verified — needs a real `MONGODB_URI`**: no
+MongoDB (local or Atlas) is provisioned in this environment, so the actual connect →
+`Policy.getSingleton()` → `GET /api/admin/config` round-trip hasn't been run end-to-end
+yet. Next step for whoever owns this: copy `server/.env.example` to `server/.env`, fill
+in a real `MONGODB_URI` (Atlas free tier is fine to start), run `npm run seed:policy`
+once to confirm the connection and see the seeded Policy document printed, then
+`npm run dev` and hit `GET /api/health` and `GET /api/admin/config` to confirm both
+return the `{ ok:true, data }` shape. Track 2 (User model + auth middleware + route
+stubs) is still open.
+
+---
+
+## 10. Open questions inherited from the wireframe spec
 
 These were explicitly left undecided by the source design system — resolve with the
 client/user before treating either direction as final:
