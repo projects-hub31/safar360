@@ -30,6 +30,8 @@ export default function Checkout() {
   const [promoInput, setPromoInput] = useState('');
   const [promoMsg, setPromoMsg] = useState(null);
   const [detail, setDetail] = useState('');
+  const [payError, setPayError] = useState(null);
+  const [paying, setPaying] = useState(false);
 
   if (!lock) {
     return (
@@ -75,9 +77,20 @@ export default function Checkout() {
     navigate('/booking/expired', { state: { tourId, title } });
   };
 
-  const onPay = () => {
+  const onPay = async () => {
+    if (paying) return;
+    setPaying(true);
+    setPayError(null);
+    // guestRows is passed straight through rather than via setGuests()'s
+    // committed state — see BookingContext.beginCapture's own comment on why
+    // (a same-handler setState wouldn't be visible yet in this closure).
+    const result = await beginCapture(guestRows);
+    setPaying(false);
+    if (!result.ok) {
+      setPayError(result.message || 'Could not start payment. Try again.');
+      return;
+    }
     setGuests(guestRows);
-    beginCapture();
     navigate('/booking/gateway');
   };
 
@@ -173,12 +186,20 @@ export default function Checkout() {
         </div>
       </Card>
 
-      <Button onClick={onPay} disabled={!canPay} size="lg" fullWidth>
-        Pay {formatMoney(totals.total)}
+      {payError && (
+        <p role="alert" className="text-center text-sm leading-relaxed text-danger-text">{payError}</p>
+      )}
+      <Button onClick={onPay} disabled={!canPay || paying} size="lg" fullWidth>
+        {paying ? 'Starting payment…' : `Pay ${formatMoney(totals.total)}`}
       </Button>
       <p className="text-center text-xs leading-relaxed text-fg-muted">
         Your booking is confirmed by our server, not by this page.
       </p>
+      <div className="flex flex-col gap-1 rounded-xl border border-dashed border-border-loud p-3 text-xs leading-relaxed text-fg-muted">
+        <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">Test values</span>
+        <span>Card <span dir="ltr" className="font-mono">4000 0000 0000 0002</span> declines. Card <span dir="ltr" className="font-mono">4100 0000 0000 0019</span> is held for review.</span>
+        <span>A JazzCash/EasyPaisa number ending in <span dir="ltr" className="font-mono">0000</span> declines. A total ≥ Rs 400,000 is held for review.</span>
+      </div>
     </div>
   );
 }

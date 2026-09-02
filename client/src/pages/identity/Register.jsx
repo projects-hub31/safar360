@@ -16,16 +16,22 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [duplicate, setDuplicate] = useState(false);
+  const [serverError, setServerError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const passwordError = passwordTouched && password.length < 12 ? 'Use at least 12 characters.' : null;
   const canSubmit = name.trim() && password.length >= 12 && (method === 'phone' ? phone.trim() : email.trim());
 
-  const onSubmit = (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
-    if (!canSubmit) return;
-    const result = startRegister({ method, phone, email, password, name });
-    if (!result.ok && result.reason === 'duplicate') {
-      setDuplicate(true);
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    setServerError(null);
+    const result = await startRegister({ method, phone, email, password, name });
+    setSubmitting(false);
+    if (!result.ok) {
+      if (result.reason === 'duplicate') setDuplicate(true);
+      else setServerError(result.message || 'Something went wrong. Try again.');
       return;
     }
     navigate('/identity/otp');
@@ -36,8 +42,8 @@ export default function Register() {
     navigate('/identity/otp');
   };
 
-  const onResetInstead = () => {
-    startReset({ phone });
+  const onResetInstead = async () => {
+    await startReset({ phone });
     navigate('/identity/otp');
   };
 
@@ -127,8 +133,12 @@ export default function Register() {
             helper={passwordError ? null : 'At least 12 characters — length is what matters, not symbols.'}
           />
 
-          <Button type="submit" disabled={!canSubmit} size="lg">
-            Continue
+          {serverError && (
+            <p role="alert" className="text-sm leading-relaxed text-danger-text">{serverError}</p>
+          )}
+
+          <Button type="submit" disabled={!canSubmit || submitting} size="lg">
+            {submitting ? 'Creating account…' : 'Continue'}
           </Button>
         </form>
 

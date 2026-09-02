@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../../context/app/useApp';
 import { useBooking } from '../../context/booking/useBooking';
@@ -18,8 +18,14 @@ const PILL = { confirmed: 'success', cancelled: 'neutral' };
 
 export default function History() {
   const { formatMoney } = useApp();
-  const { bookings } = useBooking();
+  const { bookings, fetchHistory } = useBooking();
   const [tab, setTab] = useState('all');
+
+  useEffect(() => {
+    fetchHistory();
+    // Runs once on mount — fetchHistory is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const rows = bookings.filter((b) => tab === 'all' || b.state === tab).slice().reverse();
 

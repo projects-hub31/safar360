@@ -112,42 +112,63 @@ async function listTours(req, res, next) {
   }
 }
 
+function toDetail(tour) {
+  return {
+    id: tour._id,
+    title: tour.title,
+    blurb: tour.blurb,
+    img: tour.img,
+    alt: tour.alt,
+    region: tour.region,
+    days: tour.days,
+    price: tour.price,
+    rating: tour.rating,
+    reviews: tour.reviews,
+    operator: tour.operator,
+    meta: tour.meta,
+    badge: tour.badge,
+    bookingMode: tour.bookingMode,
+    cancellationPolicy: tour.cancellationPolicy,
+    facts: tour.facts,
+    itinerary: tour.itinerary,
+    departures: tour.departures.map((d) => ({
+      id: d._id,
+      date: d.date,
+      note: d.note,
+      seatsTotal: d.seatsTotal,
+      seatsLeft: d.seatsLeft,
+    })),
+  };
+}
+
 async function getTour(req, res, next) {
   try {
     const tour = await Tour.findById(req.params.id);
     if (!tour || !tour.published) {
       throw new ApiError(404, "TOUR_NOT_FOUND", "This tour doesn't exist or is no longer listed.");
     }
-
-    ok(res, {
-      id: tour._id,
-      title: tour.title,
-      blurb: tour.blurb,
-      img: tour.img,
-      alt: tour.alt,
-      region: tour.region,
-      days: tour.days,
-      price: tour.price,
-      rating: tour.rating,
-      reviews: tour.reviews,
-      operator: tour.operator,
-      meta: tour.meta,
-      badge: tour.badge,
-      bookingMode: tour.bookingMode,
-      cancellationPolicy: tour.cancellationPolicy,
-      facts: tour.facts,
-      itinerary: tour.itinerary,
-      departures: tour.departures.map((d) => ({
-        id: d._id,
-        date: d.date,
-        note: d.note,
-        seatsTotal: d.seatsTotal,
-        seatsLeft: d.seatsLeft,
-      })),
-    });
+    ok(res, toDetail(tour));
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { listTours, getTour };
+// Bridges the client's pre-existing static mock ids (data/traveler/tours.js's
+// `TOURS[].id`, e.g. 'hunza') to a real Mongo tour — `Tour.slug` was seeded
+// specifically for this (tours.seed.js's own comment: "legacy mock id...kept
+// for the seed/demo data only"). Lets already-built Discovery screens keep
+// their existing photography/copy while a real booking is placed against the
+// real tour/departure ids underneath.
+async function getTourBySlug(req, res, next) {
+  try {
+    const tour = await Tour.findOne({ slug: req.params.slug });
+    if (!tour || !tour.published) {
+      throw new ApiError(404, "TOUR_NOT_FOUND", "This tour doesn't exist or is no longer listed.");
+    }
+    ok(res, toDetail(tour));
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listTours, getTour, getTourBySlug };

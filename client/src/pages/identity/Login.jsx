@@ -13,12 +13,16 @@ export default function Login() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const onSubmit = (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
-    const result = login({ identifier, password });
+    if (submitting) return;
+    setSubmitting(true);
+    const result = await login({ identifier, password });
+    setSubmitting(false);
     if (!result.ok) {
-      setError('Enter your password to continue.');
+      setError(result.message || 'Enter your password to continue.');
       return;
     }
     navigate('/discover/home');
@@ -51,8 +55,8 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             error={error}
           />
-          <Button type="submit" disabled={!identifier.trim()} size="lg">
-            Sign in
+          <Button type="submit" disabled={!identifier.trim() || submitting} size="lg">
+            {submitting ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>
         <p className="text-center text-xs text-fg-muted">

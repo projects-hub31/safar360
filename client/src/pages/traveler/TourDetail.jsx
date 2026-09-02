@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../../context/app/useApp';
 import { useBooking } from '../../context/booking/useBooking';
@@ -8,6 +8,7 @@ import StatusPill from '../../components/ui/StatusPill';
 import Stepper from '../../components/ui/Stepper';
 import TextField from '../../components/ui/TextField';
 import { CNIC_ERROR, isValidCnic } from '../../utils/validators';
+import { api } from '../../utils/api';
 import tourPassu from '../../assets/traveler/tour-passu.jpg';
 import tourCamp from '../../assets/traveler/tour-camp.jpg';
 
@@ -17,25 +18,56 @@ const CANCEL_COPY = {
   strict: '50% back until 14 days before departure. Nothing after that — permits and jeeps are booked well ahead.',
 };
 
-export default function TourDetail() {
-  const { id } = useParams();
+// Keyed by `id` from the default export below (same remount-over-effect-reset
+// pattern as shop/Product.jsx's ProductView) — React reuses this component
+// instance across a same-route param change, so without the key a stale
+// `liveTour` fetched for the *previous* tour would render (and be bookable)
+// against the new one for a moment.
+function TourDetailView({ id }) {
   const navigate = useNavigate();
   const { formatMoney } = useApp();
   const { avail, startLock, createRequest } = useBooking();
   const tour = TOURS.find((t) => t.id === id) || TOURS[0];
   const details = TOUR_DETAILS[tour.id];
 
+  // Bridges this pre-existing mock catalog entry to its real backend Tour
+  // document via `slug` (server/src/models/Tour.js's own field for exactly
+  // this) — an instant-mode booking needs a real tour/departure id to hold
+  // against; a request-mode booking stays on the pre-existing mock path
+  // below (no vendor-inbox backend exists yet to resolve a real request
+  // against, CLAUDE.md §9), so it never reads `liveTour` at all.
+  const [liveTour, setLiveTour] = useState(null);
+  const [lockError, setLockError] = useState(null);
+  const [locking, setLocking] = useState(false);
+
+  useEffect(() => {
+    if (tour.bookingMode === 'request') return undefined;
+    let cancelled = false;
+    api.get(`/discover/tours/slug/${tour.id}`).then((res) => {
+      if (!cancelled && res.ok) setLiveTour(res.data);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const seatsLeft = avail[tour.id] ?? 0;
-  // `daysFromNow` is the source of truth for the real departureAt timestamp
-  // used by cancellation refund math (computed in onBook, an event handler —
-  // never here in render, where reading "now" isn't safe). The `date` label
-  // is separate display flavor text and doesn't need to stay calendar-accurate
-  // as real time passes, unlike a refund calculation would.
-  const departures = [
-    { date: '14 Aug 2026', daysFromNow: 14, note: 'Independence week · guide Wajid', seats: seatsLeft },
-    { date: '28 Aug 2026', daysFromNow: 28, note: 'Cooler mornings, apricot harvest', seats: 9 },
-    { date: '11 Sep 2026', daysFromNow: 45, note: 'Last departure before the pass closes', seats: 0 },
+  const mockDepartures = [
+    { date: '14 Aug 2026', note: 'Independence week · guide Wajid', seats: seatsLeft },
+    { date: '28 Aug 2026', note: 'Cooler mornings, apricot harvest', seats: 9 },
+    { date: '11 Sep 2026', note: 'Last departure before the pass closes', seats: 0 },
   ];
+  // Real departures (real Mongo departure _id, real seatsLeft) once liveTour
+  // loads — an instant booking holds against these, never the mock rows
+  // above. No need for a client-computed "days from now": the real backend
+  // stores departureDate on the Booking itself and computes refund tiers
+  // from it server-side (booking.controller.js's cancelBooking).
+  const liveDepartures = liveTour?.departures.map((d) => ({
+    id: d.id,
+    date: new Date(d.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+    note: d.note || '',
+    seats: d.seatsLeft,
+  })) || null;
+  const departures = tour.bookingMode !== 'request' && liveDepartures ? liveDepartures : mockDepartures;
 
   const [departure, setDeparture] = useState(0);
   const [guests, setGuests] = useState(2);
@@ -66,19 +98,26 @@ export default function TourDetail() {
 
   const requestGuestsValid = requestGuests.every((g) => g.name.trim() && isValidCnic(g.cnic));
 
-  const onBook = () => {
+  const onBook = async () => {
     if (tour.bookingMode === 'request') {
       if (!requestGuestsValid) return;
       createRequest({ tourId: tour.id, title: tour.title, price: tour.price, seats: guests, guests: requestGuests });
       navigate('/booking/awaiting-accept');
-    } else {
-      startLock({
-        tourId: tour.id, title: tour.title, price: tour.price, seats: guests,
-        departureDays: chosen.daysFromNow,
-        cancellationPolicy: tour.cancellationPolicy,
-      });
-      navigate('/booking/checkout');
+      return;
     }
+    if (!liveTour || !chosen.id) return;
+    setLockError(null);
+    setLocking(true);
+    const result = await startLock({
+      tourId: liveTour.id, departureId: chosen.id, title: tour.title, price: tour.price, seats: guests,
+      cancellationPolicy: liveTour.cancellationPolicy || tour.cancellationPolicy,
+    });
+    setLocking(false);
+    if (!result.ok) {
+      setLockError(result.message || 'Could not hold these seats. Try again.');
+      return;
+    }
+    navigate('/booking/checkout');
   };
 
   return (
@@ -227,13 +266,23 @@ export default function TourDetail() {
               </div>
             )}
 
-            <Button onClick={onBook} disabled={soldOut || (tour.bookingMode === 'request' && !requestGuestsValid)} size="lg" fullWidth>
+            <Button
+              onClick={onBook}
+              disabled={soldOut || locking || (tour.bookingMode === 'request' ? !requestGuestsValid : !liveTour)}
+              size="lg"
+              fullWidth
+            >
               {soldOut
                 ? 'Sold out on this date'
                 : tour.bookingMode === 'request'
                   ? `Request ${guests} ${guests === 1 ? 'seat' : 'seats'} — operator has 24h`
-                  : `Hold ${guests} ${guests === 1 ? 'seat' : 'seats'} for 10 minutes`}
+                  : locking
+                    ? 'Holding your seats…'
+                    : !liveTour
+                      ? 'Loading live availability…'
+                      : `Hold ${guests} ${guests === 1 ? 'seat' : 'seats'} for 10 minutes`}
             </Button>
+            {lockError && <p role="alert" className="text-xs leading-relaxed text-danger-text">{lockError}</p>}
             <p className="text-xs leading-relaxed text-fg-muted">
               {tour.bookingMode === 'request'
                 ? 'No seats are deducted and you are not charged until the operator accepts.'
@@ -260,4 +309,9 @@ export default function TourDetail() {
       </div>
     </div>
   );
+}
+
+export default function TourDetail() {
+  const { id } = useParams();
+  return <TourDetailView key={id} id={id} />;
 }

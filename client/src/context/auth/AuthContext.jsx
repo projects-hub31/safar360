@@ -1,19 +1,16 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthContext, PARTNER_ROLES, ROLES } from './auth-context';
+import { api, getAccessToken, setAccessToken } from '../../utils/api';
 
-const OTP_MAX_ATTEMPTS = 5;
-
-// --- Mock auth, until server/ has real endpoints -----------------------
-// Every value below stands in for a server decision (§2 Law 1: the server
-// is the truth). Swap each function's body for a fetch() when the API
-// exists; the shape callers use (return { ok, ... }) is designed to make
-// that swap a body-only change.
-const MAGIC_OTP = '419027'; // wireframe's documented magic verify code, §6
-const DUPLICATE_PHONE = '3004821776'; // wireframe's documented dupe-account trigger, §6
-
-function normalizePhone(phone) {
-  return String(phone || '').replace(/\D/g, '');
-}
+// --- Real auth (server/src/routes/identity) -----------------------------
+// register/login/OTP/refresh/logout below call the actual backend (CLAUDE.md
+// §9 — identity module, verified end-to-end). The magic OTP code stays valid
+// as the server's own documented dev bypass (server/src/utils/otp.js), so no
+// UI here needed to change to keep using it. quickSignIn/switchRole/
+// submitKyc/setKycStatus/startOAuth remain client-only testing levers — the
+// backend has no session-switching, KYC-review, or OAuth endpoints yet (KYC
+// review lands with the vendor module, CLAUDE.md §9), so those stay mocked
+// and clearly labeled as such in the UI that surfaces them.
 
 function readUser() {
   try {
@@ -39,7 +36,7 @@ export function AuthProvider({ children }) {
   // its copy and by the OTP screen to decide where success routes to.
   const [signupRole, setSignupRole] = useState(null);
   // In-flight verification. Deliberately NOT persisted — refreshing mid-OTP
-  // restarts the flow, same as losing a session with no backend behind it.
+  // restarts the flow, matching a real OTP session's short lifetime.
   // `otpToken` is not a timestamp, just an opaque counter the OTP screen uses
   // as a React `key` to restart its countdown on resend — see Countdown.jsx.
   const [pending, setPending] = useState(null);
@@ -49,107 +46,146 @@ export function AuthProvider({ children }) {
     writeUser(next);
   }, []);
 
+  // Rehydrate a real session on load/refresh: if an access token survived
+  // (localStorage), confirm it (or its refresh-cookie-backed replacement)
+  // against the server rather than trusting the cached `user` blindly — a
+  // quickSignIn/switchRole demo user has no access token at all, so this
+  // simply no-ops for them (they stay exactly as they were).
+  useEffect(() => {
+    if (!getAccessToken()) return;
+    api.get('/identity/auth/me').then((res) => {
+      if (res.ok) persistUser(res.data);
+      else {
+        setAccessToken(null);
+        persistUser(null);
+      }
+    });
+    // Runs once on mount only — persistUser is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const chooseRole = useCallback((roleId) => setSignupRole(roleId), []);
 
   // Returns { ok: true } to proceed to OTP, or { ok: false, reason: 'duplicate' }
   // to show the "this account may exist" panel (§6 register) — never confirms
-  // outright, so the flow can't be used to enumerate accounts.
-  const startRegister = useCallback(({ method, phone, email, password, name }) => {
-    if (method === 'phone' && normalizePhone(phone) === DUPLICATE_PHONE) {
-      return { ok: false, reason: 'duplicate' };
+  // outright, so the flow can't be used to enumerate accounts (the server
+  // enforces this the same way, ApiError DUPLICATE_ACCOUNT).
+  const startRegister = useCallback(async ({ method, phone, email, password, name }) => {
+    const role = signupRole || 'traveller';
+    const res = await api.post('/identity/auth/register', { method, phone, email, password, name, role }, { auth: false });
+    if (!res.ok) {
+      if (res.error.code === 'DUPLICATE_ACCOUNT') return { ok: false, reason: 'duplicate' };
+      return { ok: false, reason: 'error', message: res.error.message };
     }
     setPending({
       purpose: 'register',
-      method,
+      userId: res.data.userId,
       phone: method === 'phone' ? phone : null,
       email: method === 'email' ? email : null,
-      password,
-      name: name || null,
-      attempts: 0,
       otpToken: 0,
     });
     return { ok: true };
-  }, []);
+  }, [signupRole]);
 
-  // OAuth stubs still land on OTP — the source spec keeps phone verification
-  // mandatory regardless of how the account started (§6 register).
+  // No real OAuth provider is wired up server-side — kept as a client-only
+  // stub (never reaches a real account), clearly out of scope until a
+  // provider is chosen.
   const startOAuth = useCallback((provider) => {
     setPending({
       purpose: 'register',
-      method: 'oauth',
+      method: 'oauth-mock',
       provider,
-      phone: '300 0000000',
+      phone: null,
       email: null,
-      name: provider === 'google' ? 'Google account' : 'Facebook account',
-      attempts: 0,
       otpToken: 0,
+      mock: true,
     });
     return { ok: true };
   }, []);
 
-  // Password reset reuses the OTP component and, on success, revokes every
-  // existing session — here that just means replacing `user` outright rather
-  // than patching it (§6 register).
-  const startReset = useCallback(({ phone }) => {
+  // Password reset: step 1 of 2. Never confirms whether the account exists
+  // (server mirrors this — password.controller.js always replies `sent:true`).
+  const startReset = useCallback(async ({ phone, email }) => {
+    const identifier = phone || email;
+    const res = await api.post('/identity/password/forgot', { identifier }, { auth: false });
+    if (!res.ok) return { ok: false, message: res.error.message };
     setPending({
       purpose: 'reset',
-      method: 'phone',
-      phone,
-      email: null,
-      attempts: 0,
+      userId: res.data.userId || null,
+      phone: phone || null,
+      email: email || null,
       otpToken: 0,
     });
     return { ok: true };
   }, []);
 
-  const resendOtp = useCallback(() => {
-    setPending((p) => (p ? { ...p, attempts: 0, otpToken: p.otpToken + 1 } : p));
-  }, []);
-
-  // Returns { ok: true } on success, or { ok: false, attemptsLeft, exhausted }.
-  const verifyOtp = useCallback((code) => {
-    if (!pending) return { ok: false, attemptsLeft: 0, exhausted: true };
-
-    if (code !== MAGIC_OTP) {
-      const attempts = pending.attempts + 1;
-      const exhausted = attempts >= OTP_MAX_ATTEMPTS;
-      setPending((p) => (p ? { ...p, attempts } : p));
-      return { ok: false, attemptsLeft: Math.max(0, OTP_MAX_ATTEMPTS - attempts), exhausted };
+  const resendOtp = useCallback(async () => {
+    if (!pending?.userId) {
+      setPending((p) => (p ? { ...p, otpToken: p.otpToken + 1 } : p));
+      return;
     }
+    await api.post('/identity/auth/otp/resend', { userId: pending.userId, purpose: pending.purpose }, { auth: false });
+    setPending((p) => (p ? { ...p, otpToken: p.otpToken + 1 } : p));
+  }, [pending]);
 
-    if (pending.purpose === 'register') {
+  // Returns { ok: true } on success (register: signed in; reset: needs a new
+  // password next, see completeReset), or { ok: false, exhausted, message }.
+  const verifyOtp = useCallback(async (code) => {
+    // The OAuth mock path never created a real account server-side — nothing
+    // to verify against, so it "succeeds" locally same as before.
+    if (pending?.mock) {
       const role = signupRole || 'traveller';
       persistUser({
-        name: pending.name || 'Traveller',
-        phone: pending.phone,
-        email: pending.email,
-        role,
-        verified: true,
-        kycStatus: PARTNER_ROLES.includes(role) ? 'none' : null,
-        kycReason: null,
+        name: pending.provider === 'google' ? 'Google account' : 'Facebook account',
+        phone: null, email: null, role, verified: true,
+        kycStatus: PARTNER_ROLES.includes(role) ? 'none' : null, kycReason: null,
       });
-    } else {
-      // Reset: sign back in as whatever account this device already knew,
-      // falling back to a fresh traveller session if none was stored.
-      persistUser(user || { name: 'Traveller', phone: pending.phone, email: null, role: 'traveller', verified: true, kycStatus: null, kycReason: null });
+      setPending(null);
+      return { ok: true };
     }
+
+    if (!pending?.userId) return { ok: false, exhausted: true, message: 'Nothing to verify. Start again.' };
+
+    const res = await api.post('/identity/auth/otp/verify', { userId: pending.userId, code, purpose: pending.purpose }, { auth: false });
+    if (!res.ok) {
+      return { ok: false, exhausted: res.error.code === 'OTP_EXHAUSTED', message: res.error.message };
+    }
+
+    if (pending.purpose === 'reset') {
+      setPending((p) => (p ? { ...p, resetToken: res.data.resetToken } : p));
+      return { ok: true, needsNewPassword: true };
+    }
+
+    setAccessToken(res.data.accessToken);
+    persistUser(res.data.user);
     setPending(null);
     return { ok: true };
-  }, [pending, signupRole, user, persistUser]);
+  }, [pending, signupRole, persistUser]);
 
-  // Mock sign-in: any non-empty password succeeds. A real backend replaces
-  // this whole body; the caller-facing shape ({ ok }) doesn't need to change.
-  const login = useCallback(({ identifier, password }) => {
-    if (!password) return { ok: false };
-    persistUser(
-      user && (user.phone === identifier || user.email === identifier)
-        ? user
-        : { name: 'Traveller', phone: identifier, email: null, role: 'traveller', verified: true, kycStatus: null, kycReason: null },
-    );
+  // Step 2 of password reset — sets the new password against the short-lived
+  // resetToken OTP verify issued, then revokes every session (server-side).
+  // The user signs in fresh afterward; this doesn't auto-issue a session.
+  const completeReset = useCallback(async (newPassword) => {
+    if (!pending?.resetToken) return { ok: false, message: 'Start the reset again.' };
+    const res = await api.post('/identity/password/reset', { resetToken: pending.resetToken, newPassword }, { auth: false });
+    if (!res.ok) return { ok: false, message: res.error.message };
+    setPending(null);
     return { ok: true };
-  }, [user, persistUser]);
+  }, [pending]);
 
-  const signOut = useCallback(() => persistUser(null), [persistUser]);
+  const login = useCallback(async ({ identifier, password }) => {
+    const res = await api.post('/identity/auth/login', { identifier, password }, { auth: false });
+    if (!res.ok) return { ok: false, message: res.error.message };
+    setAccessToken(res.data.accessToken);
+    persistUser(res.data.user);
+    return { ok: true };
+  }, [persistUser]);
+
+  const signOut = useCallback(() => {
+    api.post('/identity/auth/logout', {}, { auth: false }).catch(() => {});
+    setAccessToken(null);
+    persistUser(null);
+  }, [persistUser]);
 
   // Testing-only shortcut, not part of the wireframe spec — signs straight
   // in as a fresh account for any of the 7 roles with no phone/OTP entry,
@@ -162,6 +198,9 @@ export function AuthProvider({ children }) {
   // hidden magic.
   const quickSignIn = useCallback((roleId) => {
     const role = ROLES.find((r) => r.id === roleId);
+    // Not a real account — clear any real access token so this demo identity
+    // never accidentally rides a previous real login's session.
+    setAccessToken(null);
     persistUser({
       name: `Test ${role?.label || 'User'}`,
       phone: '3000000000',
@@ -207,6 +246,7 @@ export function AuthProvider({ children }) {
     startReset,
     resendOtp,
     verifyOtp,
+    completeReset,
     login,
     signOut,
     quickSignIn,
@@ -215,7 +255,7 @@ export function AuthProvider({ children }) {
     switchRole,
   }), [
     user, signupRole, pending, chooseRole, startRegister, startOAuth, startReset,
-    resendOtp, verifyOtp, login, signOut, quickSignIn, submitKyc, setKycStatus, switchRole,
+    resendOtp, verifyOtp, completeReset, login, signOut, quickSignIn, submitKyc, setKycStatus, switchRole,
   ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

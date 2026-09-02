@@ -11,7 +11,9 @@ const { ok } = require("./src/utils/respond");
 
 const app = express();
 
-app.use(cors());
+// origin:true reflects the request's own Origin (required alongside
+// credentials:true — the client sends cookies for refresh-token rotation).
+app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 app.use(express.json());
 

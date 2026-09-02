@@ -24,6 +24,8 @@ export default function Cancel() {
   const [reason, setReason] = useState('plans');
   const [preview, setPreview] = useState(null);
   const [done, setDone] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
 
   const computePreview = (r) => {
     if (!booking) return null;
@@ -47,7 +49,13 @@ export default function Cancel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking]);
 
-  if (!booking || booking.state !== 'confirmed') {
+  // `done` must exempt the state check below: a successful cancellation
+  // flips booking.state to 'cancelled' via the very same setBookings call
+  // that produces the result this screen shows next — React 18 batches that
+  // update together with the setDone(result) that follows it (verified live:
+  // without this exemption, the confirmation card never rendered at all,
+  // this screen fell straight through to "Nothing to cancel here" instead).
+  if (!booking || (booking.state !== 'confirmed' && !done)) {
     return (
       <EmptyState
         title="Nothing to cancel here"
@@ -63,7 +71,18 @@ export default function Cancel() {
     setPreview(computePreview(r));
   };
 
-  const onConfirm = () => setDone(cancelBooking(ref, reason));
+  const onConfirm = async () => {
+    if (cancelling) return;
+    setCancelling(true);
+    setCancelError(null);
+    const result = await cancelBooking(ref, reason);
+    setCancelling(false);
+    if (!result) {
+      setCancelError('Could not cancel this booking. Try again.');
+      return;
+    }
+    setDone(result);
+  };
 
   if (done) {
     return (
@@ -110,8 +129,12 @@ export default function Cancel() {
         </Card>
       )}
 
-      <Button variant="destructive" onClick={onConfirm} disabled={!preview}>
-        Cancel and refund {preview ? formatMoney(preview.amount) : ''}
+      {cancelError && (
+        <p role="alert" className="text-sm leading-relaxed text-danger-text">{cancelError}</p>
+      )}
+
+      <Button variant="destructive" onClick={onConfirm} disabled={!preview || cancelling}>
+        {cancelling ? 'Cancelling…' : `Cancel and refund ${preview ? formatMoney(preview.amount) : ''}`}
       </Button>
     </div>
   );

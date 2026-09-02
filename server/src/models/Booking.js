@@ -43,6 +43,11 @@ const bookingSchema = new mongoose.Schema(
     requestDeadline: Date,
 
     outcomeReason: String, // human copy for failed/held/sold-out/late-webhook/declined
+    // paymentState/status alone can't tell a plain decline apart from
+    // sold-out/late-webhook (webhook.service.js sets all three to
+    // paymentState:'failed') — this is the stable, machine-readable
+    // discriminator the client uses to route to the right outcome screen.
+    outcomeKind: { type: String, enum: ["confirmed", "failed", "held", "sold-out", "late"] },
 
     status: {
       type: String,

@@ -175,6 +175,7 @@ async function getStatus(req, res, next) {
       paymentState: booking.paymentState,
       requestState: booking.requestState,
       outcomeReason: booking.outcomeReason,
+      outcomeKind: booking.outcomeKind,
     });
   } catch (err) {
     next(err);

@@ -80,18 +80,21 @@ async function processPaymentWebhook(payload, signature) {
     booking.paymentState = "held";
     booking.status = "held";
     booking.outcomeReason = FAIL_REASONS.held;
+    booking.outcomeKind = "held";
   } else if (status === "failed") {
     payment.status = "failed";
     payment.failureReason = FAIL_REASONS.failed;
     booking.paymentState = "failed";
     booking.status = "failed";
     booking.outcomeReason = FAIL_REASONS.failed;
+    booking.outcomeKind = "failed";
   } else if (isLate) {
     payment.status = "failed";
     payment.failureReason = FAIL_REASONS.late;
     booking.paymentState = "failed";
     booking.status = "failed";
     booking.outcomeReason = FAIL_REASONS.late;
+    booking.outcomeKind = "late";
   } else if (status === "confirmed") {
     const updatedTour = await deductSeat(booking.tour, booking.departureId, booking.seats);
     if (!updatedTour) {
@@ -100,10 +103,12 @@ async function processPaymentWebhook(payload, signature) {
       booking.paymentState = "failed";
       booking.status = "failed";
       booking.outcomeReason = FAIL_REASONS["sold-out"];
+      booking.outcomeKind = "sold-out";
     } else {
       payment.status = "confirmed";
       booking.paymentState = "confirmed";
       booking.status = "confirmed";
+      booking.outcomeKind = "confirmed";
 
       const policy = await Policy.getSingleton();
       const tourDoc = updatedTour;
