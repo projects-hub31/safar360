@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed:policy": "node src/seeds/policy.seed.js"
+    "seed:policy": "node src/seeds/policy.seed.js",
+    "seed:tours": "node src/seeds/tours.seed.js"
   },
   "keywords": [],
   "author": "",

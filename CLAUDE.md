@@ -2053,6 +2053,102 @@ once to confirm the connection and see the seeded Policy document printed, then
 return the `{ ok:true, data }` shape. Track 2 (User model + auth middleware + route
 stubs) is still open.
 
+**Track 2 — done, plus the full days 2–7 traveller chain — 2026-09-02.** Finished the
+open Track 2 item (`models/User.js`: 7 roles + `adminRole`, `otp` subdocument, bcrypt
+`passwordHash`, `kycStatus`; `middleware/auth.js` `requireAuth`; `middleware/
+requireRole.js`) and then continued straight through the rest of §9's days 2–7 scope —
+the traveller-first chain this whole plan is sequenced around — rather than stopping at
+the Track-2 boundary, since Track 1 had already cleared the day-1 dependencies it needed.
+
+*Identity (day 2–3 scope):* `POST /api/identity/auth/register|login|otp/verify|otp/resend`,
+`/refresh`, `/logout`, `GET /auth/me`, `POST /identity/password/forgot|reset`. Real bcrypt
++ JWT access/refresh, 6-digit OTP (5 min TTL, 5 attempts, 15-min lockout) with the
+client's own documented magic code `419027` kept alive as a non-production bypass
+(`utils/otp.js`) so manual testing doesn't need a real SMS/email provider. Refresh-token
+rotation is a real `Session` model keyed by `family`/`jti` — reusing an already-rotated
+token revokes every session on that `family` (§4's "theft" rule), and a password reset
+revokes every session for the user outright. Per-phone login rate limiting
+(`middleware/rateLimiter.js`, in-memory — documented Redis stand-in, same call as the
+lock service below) locks out further attempts on that number for the window, matching
+the same lockout shape as the OTP rule, not just failed-attempt counting.
+
+*Discovery (day 4–7 scope):* `models/Tour.js` (embedded `departures` subdocs, each with
+its own `seatsTotal`/`seatsLeft` — not a single flat count), `seeds/tours.seed.data.js` +
+`tours.seed.js` (`npm run seed:tours`) migrating all 10 rows from `client/src/data/
+traveler/tours.js` by hand (that file is an ES module importing `.jpg` assets, so it
+can't be `require()`d directly from `server/`). `GET /api/discover/tours` ports the
+client's exact search/filter/sort logic server-side — price range, region, duration
+buckets, verified-only, has-availability, and the sponsored-slot interleave (2 per 8
+organic, relevance-sort only, stripped on every other sort) — plus `GET /tours/:id` for
+the detail screen.
+
+*Booking/payment (day 4–7 scope, the highest-risk part of the whole plan):*
+`services/lock.service.js` — the soft lock as a Mongo TTL collection (`models/Lock.js`,
+`expireAfterSeconds: 0`), Redis-fallback decision from §9 made explicit rather than
+silently defaulted. `services/payment-gateway.mock.js` + `services/webhook.service.js` —
+a charge goes `pending` immediately, then a signed callback resolves it a few seconds
+later through the *same* `processPaymentWebhook` function whether it's the mock gateway
+delivering in-process or a real `POST /api/webhooks/payment` call, with the deterministic
+test triggers preserved exactly (`4000...0002` decline, `4100...0019` held, wallet ending
+`0000` declined, total ≥ Rs 400,000 held) and the fraud score modeled as the weighted-
+factor breakdown §3 asks for, not a bare number. Atomic seat deduction is
+`findOneAndUpdate` + `arrayFilters` + a `$gte` guard on the specific departure
+subdocument — §3's exact pattern, never read-then-write; a null result is treated as
+sold-out/late-webhook, never oversold. All six outcome branches
+(confirmed/failed/held/sold-out/late-webhook/expired-lock) are real. Cancellation
+(`POST /booking/:ref/cancel`) reads each booking's own snapshotted cancellation-policy
+tier (`utils/cancellationPolicy.js`, ported verbatim from the client), restores the seat,
+and reverses the accrued ledger row. Request-to-book
+(`POST /booking/request` + `POST /booking/:ref/operator-decision`) is the full
+request→accepted/declined lifecycle with the 24h window enforced (lazily, on next read —
+no queue/cron infra exists yet); the operator-decision endpoint is a deliberately
+lightweight stand-in for the real vendor inbox (§9 days 8–9), scoped only so the
+traveller-facing request flow has somewhere real to resolve to. `services/
+ledger.service.js` (`accrueCommission`/`reverseLedger`) is the one shared implementation
+§3 asks for — booking confirm and operator-accept both call it, reading
+`Policy.commissionPct` as the fallback rate until the real per-vendor rate exists
+(vendor module, not yet built).
+
+One correctness fix worth flagging explicitly: the first draft kept a booking's `Lock`
+alive until its webhook resolved (to detect a late-arriving confirmation), which left a
+window where checkout could be double-submitted against the same lock before the webhook
+returned — two Bookings/Payments off one hold. Fixed by snapshotting `lockExpiresAt` onto
+the `Booking` at checkout and releasing the `Lock` immediately; the webhook now reads that
+snapshot instead of a live Lock doc, and a second checkout on an already-consumed
+`lockId` correctly 404s. Caught and fixed before verification, not after.
+
+**Verified — genuinely, not just syntax-checked.** No MongoDB was available in this
+environment either (same gap Track 1 hit), so `mongodb-memory-server` was installed as a
+throwaway dev-only tool (`npm install --no-save`, never touched `package.json` — confirm
+`git status`/`git diff` show no dependency changes if picking this up) to boot a real
+in-memory MongoDB and drive the actual `server.js` over real HTTP. A 34-assertion run
+covered: register → OTP verify (including the wrong-code and magic-bypass paths) → login
+→ refresh rotation → reuse-detected-as-theft → the whole family dying with it; per-phone
+rate limiting actually locking out further attempts; duplicate-phone registration
+rejected without confirming which field matched; tour search/filter/sort including the
+sponsored interleave and its stripping on non-relevance sorts; the full instant-booking
+hold→checkout→webhook→confirmed path with a real atomic seat decrement; the double-
+checkout-on-one-lock fix; both deterministic decline and fraud-hold outcomes; tiered-
+refund cancellation with the seat returned and the ledger row flipped to `reversed`; the
+full request-to-book → operator-accept → confirmed path; and password reset revoking
+every prior session, operator included. All 34 passed. The throwaway test script and the
+`mongodb-memory-server` dependency were both removed after the run — this environment is
+back to having no MongoDB, exactly as Track 1 left it; whoever provisions a real
+`MONGODB_URI` should expect the same behavior this run just proved, not re-derive it from
+scratch.
+
+**Not built yet (the traveller module's remaining ~20%, called out explicitly rather than
+silently implied to work):** group-split / shared guest pay-link (§3's all-or-nothing
+group booking) has no backend yet — `BookingContext`'s mock version is still the only
+implementation. A real payment gateway is still out of scope per §9's own note (confirm
+with the user before integrating one). KYC review endpoints are vendor-side, not
+traveller-side, and land with the vendor module (days 8–9) as originally planned. The
+operator-decision endpoint above is intentionally minimal, not the real vendor inbox.
+None of `AuthContext`/`BookingContext`'s mock actions have been swapped for real
+`fetch()` calls yet — that's its own explicit step (§9 rule 2) for whoever picks up
+client integration next, verified in-browser per module, not assumed from the backend
+being real.
+
 ---
 
 ## 10. Open questions inherited from the wireframe spec
