@@ -25,12 +25,12 @@ real screen falls through to it. All 9 modules' routes are wired per §5/§8. Re
 non-blocking items noted in §8 items 9–12 (a few click-throughs not yet re-confirmed
 in-browser after refactors — Suspense fallback on route transitions, Ledger/Payout-batch/
 Analytics walk-through, quick-sign-in panel) are cosmetic/verification gaps, not missing
-functionality, and don't block backend work. **One piece of repo hygiene to close before
-starting backend branches**: `client/` carries its own nested `.git` (separate from
-`safar360/`'s), and as of this date has uncommitted changes from the last frontend pass
-(route guards, quick sign-in, the two new Money screens — §8 items 11–12) — commit those
-in `client/`'s own repo before branching for backend work, or they'll look like backend-
-era changes in history later. Backend build plan starts at §9 below.
+functionality, and don't block backend work. **Repo hygiene closed 2026-09-02**:
+`client/` carries its own nested `.git` (separate from `safar360/`'s); the route guards,
+quick sign-in, and the two new Money screens (§8 items 11–12) that were sitting
+uncommitted there as of 2026-09-01 are now committed in `client/`'s own repo, dated as
+frontend-era work rather than blurring into the backend commits that started the same
+day. Backend build plan starts at §9 below.
 
 **Source wireframes:** `~/Downloads/genie(new project)/Safar360 Complete Wire Frames/`
 (`index.html`, `safar360-app.html`, `safar360-design-system.html`). These are large
