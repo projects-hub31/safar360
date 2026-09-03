@@ -2144,10 +2144,87 @@ implementation. A real payment gateway is still out of scope per §9's own note 
 with the user before integrating one). KYC review endpoints are vendor-side, not
 traveller-side, and land with the vendor module (days 8–9) as originally planned. The
 operator-decision endpoint above is intentionally minimal, not the real vendor inbox.
-None of `AuthContext`/`BookingContext`'s mock actions have been swapped for real
-`fetch()` calls yet — that's its own explicit step (§9 rule 2) for whoever picks up
-client integration next, verified in-browser per module, not assumed from the backend
-being real.
+
+**Client fetch-swap for identity + booking — 2026-09-03.** `AuthContext` and
+`BookingContext` (plus their dependent screens: Login, Register, Otp, Checkout, Awaiting,
+Cancel, History, TourDetail) are now wired to the real endpoints above via a new
+`client/src/utils/api.js` — the §9 rule-2 step flagged as outstanding above is done for
+these two contexts specifically. Discovery's own context/data source swap and the
+group-split gap noted above are unaffected and still open.
+
+**Vendor backend (module 04) — started 2026-09-03, ~50% of §9 days 8–9's scope.** Built
+directly against the real live KYC/subscription state (CLAUDE.md §2 law: "the server is
+the truth"), not a stub:
+- `models/Subscription.js` + `services/subscription.service.js` — the full 5-state graph
+  (§3), lazy-timer settlement on read (grace→suspended after 3 days, suspended→cancelled
+  after 90, cancelled→purged after 90 — same "check on read, no cron infra" pattern as
+  booking's `settleIfLapsed`), plan table in `utils/vendorPlans.js` (Starter/Growth/Pro,
+  §3's exact price/cap/commission numbers) copied onto the Subscription doc at subscribe
+  time rather than re-read live, and the same honestly-labeled manual test levers the
+  client already has (`simulate-charge-failure`, `retry`, `exhaust-retries`).
+- `models/KycDocument.js` + `services/kyc.service.js` — per-document `pending→approved|
+  rejected`, resubmission reuses the same (vendor, type) row rather than creating a new
+  one, the 4 fixed rejection reasons enforced server-side, and the vendor's aggregate
+  `User.kycStatus` recomputed from the tour-operator required set (CNIC front/back +
+  business registration) every time a document is submitted or reviewed. Review is
+  admin-gated (`requireRole('admin')`) even though the admin console itself (module 09)
+  doesn't exist yet — same "build the service ahead of its future UI" precedent the
+  ledger service already set.
+- `Tour` model extended with `ownerId`, `status`, and `photos` (previously `operator` was
+  a bare string with "no real Vendor/User link" — that gap is now closed for
+  vendor-created listings; legacy/seeded tours keep `ownerId: null` and are unaffected).
+  Full listing CRUD, photo add/remove/set-cover, and per-departure add/blackout-toggle/
+  seat-edit (hard floor at already-booked seats, §6 vendor/availability) all live under
+  `/api/vendor/listings`.
+- `utils/publishGate.js` — the exact blocker list/copy ported from
+  `VendorContext.jsx`'s `publishGate`, now also checking a real plan listing-cap (a
+  blocker the client version didn't have live data for) alongside KYC/subscription/
+  photos/price/departures.
+- **Per-vendor commission now wired into both real capture paths** — `webhook.service.js`
+  and `booking.controller.js`'s `operatorDecision` both read the paying vendor's own
+  `Subscription.commissionPct` first, falling back to `Policy.commissionPct` only for
+  ownerless (legacy) tours or a vendor with no active/grace subscription. This was called
+  out as explicit follow-up debt in the days-4–7 log above ("reading `Policy.commissionPct`
+  as the fallback rate until the real per-vendor rate exists") — it's now real, not a
+  fallback-always situation. §3's "Commission is plan-driven, not a single global rate"
+  is genuinely true end-to-end for the traveller-booking path.
+- `GET /api/vendor/ledger` — the vendor's own filtered view over the shared `LedgerRow`
+  collection (matched on the vendor's display name, the same string `ledger.service.js`
+  already writes as `party`) plus a vendor-scoped reverse action. This is the ledger
+  service's first real consumer, as §9 anticipated.
+
+**Verified — genuinely, not just syntax-checked**, same method as the days 2–7 pass:
+`mongodb-memory-server` installed as a throwaway dev-only tool (never touched
+`package.json`, removed after the run), driving the real `server.js` over real HTTP. A
+43-assertion run covered: the full subscription lifecycle including all 3 clock-driven
+manual levers; KYC submit → wrong-reason rejection refused → rejection with a fixed
+reason → aggregate status flipping to `rejected` → resubmission reusing the same document
+slot (not a 4th row) → approval of all 3 → aggregate status `approved`; a non-admin
+blocked from reviewing KYC; publish correctly blocked with the right blocker count before
+KYC/photos/price/departures are satisfied, and correctly *not* blocked by a `grace`-state
+subscription; publish succeeding once every condition is met; the new listing appearing
+in real Discovery search with a live seat count; a full real traveller booking against
+that listing confirming via the real webhook path; the vendor's ledger showing exactly
+one row at the vendor's actual Pro-plan rate (9%) rather than the Policy default (12%) —
+proving the commission-rate wiring, not just its presence; the departure seat-floor
+refusing to drop below an already-booked seat and accepting above it; a blacked-out
+departure disappearing from Discovery's seat count; a ledger row reversing; and a Starter
+plan's 3-listing cap blocking a 4th publish with the correct blocker while the first 3
+succeed. All 43 passed.
+
+**Not built yet (the remaining ~50% of module 04, called out explicitly):** the admin
+side of payouts (batch creation, the two-step preparer-≠-approver approval, §3) — this
+module only exposes the vendor's own read+reverse view, not the batch mechanism itself,
+which is admin console (module 09) scope. Vendor analytics/KPI endpoints. Real file
+storage for KYC documents and listing photos — `fileRef` is currently just a
+client-supplied string handle, no upload/storage service exists yet (out of scope for
+this pass, same as the "no real payment gateway" note above — confirm with the user
+before adding one). `VendorContext`'s mock actions have not been swapped for real
+`fetch()` calls yet — that's the same explicit, separate step §9 rule 2 calls for,
+verified in-browser per module, not assumed from the backend being real. Module 05
+(transport & property) — the parallel Dev-B track for these same two days — hasn't been
+started; it shares no code with module 04 beyond the same lead-lifecycle shape already
+documented in §3.
 
 ---
 

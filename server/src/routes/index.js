@@ -4,6 +4,7 @@ const identityRoutes = require("./identity");
 const discoverRoutes = require("./discover");
 const bookingRoutes = require("./booking");
 const webhookRoutes = require("./webhooks");
+const vendorRoutes = require("./vendor");
 
 const router = express.Router();
 
@@ -14,5 +15,6 @@ router.use("/identity", identityRoutes);
 router.use("/discover", discoverRoutes);
 router.use("/booking", bookingRoutes);
 router.use("/webhooks", webhookRoutes);
+router.use("/vendor", vendorRoutes);
 
 module.exports = router;

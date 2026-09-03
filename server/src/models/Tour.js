@@ -6,7 +6,13 @@ const departureSchema = new mongoose.Schema(
     note: String,
     seatsTotal: { type: Number, required: true },
     seatsLeft: { type: Number, required: true },
+    blackout: { type: Boolean, default: false }, // vendor availability toggle, §6 vendor/availability
   },
+  { _id: true }
+);
+
+const photoSchema = new mongoose.Schema(
+  { fileRef: { type: String, required: true }, cover: { type: Boolean, default: false } },
   { _id: true }
 );
 
@@ -29,7 +35,8 @@ const tourSchema = new mongoose.Schema(
     price: { type: Number, required: true },
     rating: { type: Number, default: 0 },
     reviews: { type: Number, default: 0 },
-    operator: { type: String, required: true }, // string name for now — no real Vendor/User link until the vendor backend pass
+    operator: { type: String, required: true }, // display name, copied from the owning vendor's User.name at creation time
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true }, // real vendor link, added with the vendor backend pass — null on legacy/seed tours
     meta: String,
     badge: String,
     sponsored: { type: Boolean, default: false },
@@ -39,6 +46,12 @@ const tourSchema = new mongoose.Schema(
     facts: [factSchema],
     itinerary: [dayPlanSchema],
     departures: [departureSchema],
+    photos: [photoSchema],
+    // `status` is the vendor-facing lifecycle value; `published` is kept in
+    // sync by the controller that changes it (discover's query already
+    // filters on `published` — kept as the one boolean it reads rather than
+    // rewriting that query to compare against `status` everywhere).
+    status: { type: String, enum: ["draft", "published", "unpublished"], default: "published" },
     published: { type: Boolean, default: true },
   },
   { timestamps: true }

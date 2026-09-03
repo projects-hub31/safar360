@@ -28,8 +28,12 @@ function interleaveSponsored(list) {
 }
 
 function primaryDeparture(tour) {
-  const upcoming = tour.departures.filter((d) => d.date.getTime() >= Date.now());
-  return upcoming.sort((a, b) => a.date - b.date)[0] || tour.departures[0] || null;
+  // Blacked-out departures (vendor availability toggle, §6 vendor/
+  // availability) are withdrawn from traveller-facing selection — same
+  // visibility-gate pattern as an expired permit or unapproved KYC.
+  const visible = tour.departures.filter((d) => !d.blackout);
+  const upcoming = visible.filter((d) => d.date.getTime() >= Date.now());
+  return upcoming.sort((a, b) => a.date - b.date)[0] || visible[0] || null;
 }
 
 function toCard(tour) {

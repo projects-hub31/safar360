@@ -3,6 +3,7 @@ const Booking = require("../models/Booking");
 const Payment = require("../models/Payment");
 const Policy = require("../models/Policy");
 const ledgerService = require("./ledger.service");
+const subscriptionService = require("./subscription.service");
 const { verifyWithRetry } = require("../utils/webhookSignature");
 
 const FAIL_REASONS = {
@@ -110,14 +111,20 @@ async function processPaymentWebhook(payload, signature) {
       booking.status = "confirmed";
       booking.outcomeKind = "confirmed";
 
-      const policy = await Policy.getSingleton();
       const tourDoc = updatedTour;
+      // Plan-driven commission, CLAUDE.md §3: read the vendor's own
+      // subscribed rate first, falling back to Policy.commissionPct only
+      // when the tour has no real owner (legacy/seed data) or the vendor
+      // has no active/grace subscription — the follow-up wiring §9's day
+      // 4-7 log flagged as pending until the vendor module existed.
+      const vendorRate = await subscriptionService.getCommissionRate(tourDoc.ownerId);
+      const rate = vendorRate ?? (await Policy.getSingleton()).commissionPct / 100;
       await ledgerService.accrueCommission({
         ref: booking.ref,
         party: tourDoc.operator,
         label: `Commission on ${booking.ref}`,
         gross: booking.amounts.total,
-        rate: policy.commissionPct / 100,
+        rate,
         via: booking.method,
       });
     }

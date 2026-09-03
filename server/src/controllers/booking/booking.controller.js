@@ -9,6 +9,7 @@ const { genBookingRef, genPaymentId } = require("../../utils/reference-numbers")
 const { refundPct } = require("../../utils/cancellationPolicy");
 const lockService = require("../../services/lock.service");
 const ledgerService = require("../../services/ledger.service");
+const subscriptionService = require("../../services/subscription.service");
 const gateway = require("../../services/payment-gateway.mock");
 const { restoreSeat, deductSeat } = require("../../services/webhook.service");
 
@@ -316,13 +317,14 @@ async function operatorDecision(req, res, next) {
       booking.status = "confirmed";
       await booking.save();
 
-      const policy = await Policy.getSingleton();
+      const vendorRate = await subscriptionService.getCommissionRate(updatedTour.ownerId);
+      const rate = vendorRate ?? (await Policy.getSingleton()).commissionPct / 100;
       await ledgerService.accrueCommission({
         ref: booking.ref,
         party: updatedTour.operator,
         label: `Commission on ${booking.ref}`,
         gross: booking.amounts.total,
-        rate: policy.commissionPct / 100,
+        rate,
         via: "request-to-book",
       });
     } else if (action === "decline") {
