@@ -2152,6 +2152,68 @@ Cancel, History, TourDetail) are now wired to the real endpoints above via a new
 these two contexts specifically. Discovery's own context/data source swap and the
 group-split gap noted above are unaffected and still open.
 
+**Traveller module (module 1: identity + discovery + booking/payment) — 100% of its
+defined §9 scope, 2026-09-03.** The one remaining concrete backend gap called out above —
+group-split / the shared guest pay-link — is now real:
+- `models/GroupSplit.js` + `controllers/booking/group.controller.js` +
+  `routes/booking/group.routes.js` (mounted at `/api/booking/group`, ahead of the
+  `requireAuth`-blanketed `/api/booking` router so a participant with no account can
+  still reach it — §3's own requirement). Starting a split needs a signed-in organizer;
+  reading a split's status and paying a share are both public, exactly mirroring the
+  client's pre-existing "no account needed" pay-link design.
+- All-or-nothing, for real: no seat is touched and no Booking exists until every
+  participant has paid. The **final** participant's payment is the one real capture
+  point — it runs the same atomic `deductSeat` + `Booking.create` + `ledgerService.
+  accrueCommission` (with the same per-vendor-rate lookup the vendor module wired in)
+  as the instant-checkout webhook path, not a parallel implementation. A lapsed window
+  (deadline elapsed with anyone still unpaid) is settled lazily on read, same "check on
+  read, no cron infra" pattern as booking's own `settleIfLapsed` and the subscription
+  service's timers.
+- `BookingContext`'s `startGroupSplit`/`payShare`/`lapseGroup` are swapped to the real
+  endpoints (the §9 rule-2 step this flow was still missing), plus a new `fetchGroup` —
+  needed because a participant may open the pay-link on a fresh browser/device with
+  nothing in local context state at all; `Participant.jsx` now fetches the real group
+  directly on mount rather than assuming the organizer's own session already has it
+  cached. `GroupSplit.jsx`/`TourDetail.jsx` were updated to pass a real Mongo tour/
+  departure id into the split (previously the mock catalog id, which the real backend
+  can't resolve).
+- **A real correctness bug was caught and fixed while testing this**, not an
+  aspirational note: `webhook.service.js`'s `deductSeat` — the exact §3 atomic
+  anti-oversell update, in place since the days 4-7 pass — had its `$gte` seat guard
+  living only in `arrayFilters`, which is not itself a match condition on the document.
+  A departure already below the requested seat count still matched the top-level
+  `{ _id: tourId }` filter, so `findOneAndUpdate` returned the (unchanged) document
+  instead of `null` — the "never oversell" guarantee was silently not enforced for a
+  real race on **either** caller (instant checkout and the new group-split path). Fixed
+  by moving the `$gte` condition into the top-level query via `$elemMatch`, so the whole
+  query now correctly fails to match (returns `null`) when the departure doesn't have
+  enough seats. Confirmed with a forced two-tab-style race directly against the main
+  checkout endpoint (seat count zeroed out mid-flight) — the booking now correctly
+  resolves `failed`/`sold-out` instead of wrongly confirming.
+- **Verified — genuinely.** An 18-assertion `mongodb-memory-server` run (same
+  throwaway-dependency method as every other module here) covering: the full happy path
+  (3 participants, real seat deduction, real ledger row); paying with no account/token;
+  idempotent re-pay of an already-paid or already-confirmed share; a window lapsing with
+  one unpaid (seats never touched); paying into a lapsed window refused; a genuine
+  sold-out race on the final payment lapsing the group instead of overselling; wrong-
+  booking-mode and too-few-participants guards. All 18 passed, plus the full pre-existing
+  43-assertion vendor-module suite re-run clean against the `deductSeat` fix (no
+  regression) and a standalone forced-race check against the main checkout path.
+
+**What still isn't in scope for "100%" here, by design, not oversight:** a real payment
+gateway (Stripe/JazzCash/etc.) remains explicitly out of scope for this backend pass —
+confirm with the user before integrating one, per §9's own original note; this is the
+same "Turning on real payments" item the weekly report already tracks separately under
+What's Next, not a gap in this module's own defined completion bar. Discovery's Home/
+Search screens still read the pre-existing mock `TOURS` catalog for browsing (images,
+copy, itinerary) rather than the real `Tour` collection directly — a deliberate,
+already-documented bridge (`TourDetail`'s own comment: "Bridges this pre-existing mock
+catalog entry to its real backend Tour document via `slug`") that every booking-critical
+read (live departures, seat counts, locking, group-split) already goes through for real;
+fully re-pointing Home/Search's browsing surface at the live collection is a separate,
+larger frontend-architecture change, not a backend gap, and is deliberately not bundled
+into this pass.
+
 **Vendor backend (module 04) — started 2026-09-03, ~50% of §9 days 8–9's scope.** Built
 directly against the real live KYC/subscription state (CLAUDE.md §2 law: "the server is
 the truth"), not a stub:

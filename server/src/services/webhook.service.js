@@ -17,11 +17,21 @@ const FAIL_REASONS = {
 // findOneAndUpdate with a $gte filter, never read-then-write. A null result
 // means someone else took the seat first; treated as sold-out/late-webhook,
 // never oversold.
+//
+// The $gte guard has to live in the TOP-LEVEL query (via $elemMatch), not
+// just in `arrayFilters`. `arrayFilters` only decides which array elements
+// an update touches — it is not itself a match condition on the document.
+// A departure whose seatsLeft is already below `seats` still matches
+// `{ _id: tourId }` on its own, so `arrayFilters: [{ seatsLeft: { $gte:
+// seats } }]` alone leaves $inc with nothing to touch but still returns the
+// (unchanged) document instead of null — silently defeating the whole
+// anti-oversell guarantee. Caught while building the group-split path,
+// which is the first caller that actually forces the race in a test.
 async function deductSeat(tourId, departureId, seats) {
   return Tour.findOneAndUpdate(
-    { _id: tourId },
+    { _id: tourId, departures: { $elemMatch: { _id: departureId, seatsLeft: { $gte: seats } } } },
     { $inc: { "departures.$[dep].seatsLeft": -seats } },
-    { arrayFilters: [{ "dep._id": departureId, "dep.seatsLeft": { $gte: seats } }], returnDocument: 'after' }
+    { arrayFilters: [{ "dep._id": departureId }], returnDocument: "after" }
   );
 }
 

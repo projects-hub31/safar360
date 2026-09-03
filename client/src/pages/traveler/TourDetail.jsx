@@ -288,10 +288,10 @@ function TourDetailView({ id }) {
                 ? 'No seats are deducted and you are not charged until the operator accepts.'
                 : 'Your seats are held for ten minutes while you pay. You are not charged until the operator confirms.'}
             </p>
-            {tour.bookingMode !== 'request' && guests >= 2 && !soldOut && (
+            {tour.bookingMode !== 'request' && guests >= 2 && !soldOut && liveTour && chosen.id && (
               <Link
                 to="/booking/group-split"
-                state={{ tourId: tour.id, title: tour.title, price: tour.price }}
+                state={{ tourId: liveTour.id, departureId: chosen.id, title: tour.title, price: tour.price }}
                 className="text-center text-xs font-semibold text-primary-soft-text no-underline"
               >
                 Split the cost with the group instead

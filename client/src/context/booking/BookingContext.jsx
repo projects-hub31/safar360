@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { BookingContext } from './booking-context';
 import {
   REQUEST_WINDOW_HOURS,
-  GROUP_WINDOW_HOURS,
   SERVICE_FEE_PCT,
   PROMO_CODES,
   refFor,
@@ -12,15 +11,16 @@ import { api } from '../../utils/api';
 
 // --- instant-mode booking: real backend (server/src/routes/booking) --------
 // startLock/beginCapture/checkBookingStatus/cancelBooking (for a real ref)/
-// fetchHistory below call the actual server, verified end-to-end (CLAUDE.md
-// §9). Request-to-book (createRequest/acceptRequest/declineRequest) and
-// group-split stay on the mock path below — the real backend has no vendor
-// inbox yet to resolve a real request-to-book against (§9's own note: the
-// operator-decision endpoint is "a deliberately lightweight stand-in," and
-// group-split has no backend at all) — wiring only the traveller-create half
-// would strand a request with no way to ever reach a real accepted/declined
-// outcome in this UI. `avail`/`bookings`(seeded)/`groups`/`requests` below are
-// exactly the pre-existing mock store for those two flows, unchanged.
+// fetchHistory/startGroupSplit/fetchGroup/payShare below all call the actual
+// server, verified end-to-end (CLAUDE.md §9). Request-to-book
+// (createRequest/acceptRequest/declineRequest) is the one flow still on the
+// mock path below — the real backend's operator-decision endpoint is
+// "a deliberately lightweight stand-in" for the real vendor inbox (§9's own
+// note), so wiring only the traveller-create half would strand a request
+// with no way to ever reach a real accepted/declined outcome in this UI.
+// `avail`/`bookings`(seeded)/`requests` below are the pre-existing mock
+// store for that one remaining flow; `groups` is now a real client-side
+// cache of server responses, not mock state.
 const LEGACY_SEED_REFS = new Set(['SFR-2026-0814-5521', 'SFR-2026-0801-2210']);
 
 // One seeded confirmed booking, matching VendorContext.SEED_LEDGER's `LG-4003`
@@ -207,51 +207,12 @@ export function BookingProvider({ children }) {
     setRequests((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'declined', reason } : r)));
   }, []);
 
-  // --- group split (all-or-nothing) --------------------------------------
-  const startGroupSplit = useCallback(({ tourId, title, price, participantNames }) => {
-    const id = genId('gp');
-    setGroups((gs) => gs.concat({
-      id, tourId, title, price,
-      deadlineAt: Date.now() + GROUP_WINDOW_HOURS * 3600000,
-      status: 'open',
-      participants: participantNames.map((name) => ({ name, status: 'unpaid' })),
-    }));
-    return id;
-  }, [genId]);
-
-  // The allPaid decision is made once here, from the closure's current
-  // `groups` (safe — this only ever runs from an event handler, so it's the
-  // latest render's state). setGroups' own updater below stays pure — it
-  // must never trigger other setState calls as a side effect, since
-  // StrictMode deliberately invokes updaters twice in dev to catch exactly
-  // that, and doing so here would silently double-book and double-decrement
-  // availability.
-  const payShare = useCallback((groupId, index) => {
-    const group = groups.find((g) => g.id === groupId);
-    if (!group) return;
-    const participants = group.participants.map((p, i) => (i === index ? { ...p, status: 'paid' } : p));
-    const allPaid = participants.every((p) => p.status === 'paid');
-
-    setGroups((gs) => gs.map((g) => (g.id === groupId ? { ...g, participants, status: allPaid ? 'confirmed' : g.status } : g)));
-
-    if (allPaid) {
-      setAvail((current) => ({ ...current, [group.tourId]: (current[group.tourId] ?? 0) - participants.length }));
-      setBookings((bs) => bs.concat({
-        ref: refFor('SFR'), tourId: group.tourId, title: group.title, seats: participants.length,
-        total: group.price * participants.length, method: 'group', state: 'confirmed',
-        guests: [], departureAt: null, cancellationPolicy: 'standard', at: Date.now(),
-      }));
-    }
-  }, [groups]);
-
-  const lapseGroup = useCallback((groupId) => {
-    setGroups((gs) => gs.map((g) => (g.id === groupId && g.status === 'open' ? { ...g, status: 'lapsed' } : g)));
-  }, []);
-
   // --- history (real GET /booking/history) --------------------------------
   // Re-fetches and replaces every non-seeded row each call (the server is the
   // truth) while preserving the two legacy seeded demo bookings the AI module
-  // reads by fixed ref (see LEGACY_SEED_REFS above).
+  // reads by fixed ref (see LEGACY_SEED_REFS above). Declared here (ahead of
+  // group split below) so payShare can call it the moment a split's final
+  // share confirms a real booking, without a forward-reference.
   const fetchHistory = useCallback(async () => {
     const res = await api.get('/booking/history');
     if (!res.ok) return;
@@ -272,6 +233,62 @@ export function BookingProvider({ children }) {
     }));
     setBookings((current) => [...current.filter((b) => LEGACY_SEED_REFS.has(b.ref)), ...real]);
   }, []);
+
+  // --- group split (all-or-nothing) — real backend (server/src/routes/
+  // booking/group.routes.js), verified end-to-end (CLAUDE.md §9). No lock and
+  // no charge happens on start — the real capture point is the final
+  // participant's payment, which is also the one place inventory is ever
+  // touched (mirrors the instant-checkout webhook's atomic deduction).
+  const mapGroup = useCallback((d) => ({
+    id: d.id,
+    tourId: d.tourId,
+    departureId: d.departureId,
+    title: d.title,
+    price: d.price,
+    total: d.total,
+    deadlineAt: new Date(d.deadlineAt).getTime(),
+    status: d.status,
+    participants: d.participants,
+    bookingRef: d.bookingRef,
+    outcomeReason: d.outcomeReason,
+  }), []);
+
+  const upsertGroup = useCallback((dto) => {
+    const mapped = mapGroup(dto);
+    setGroups((gs) => (gs.some((g) => g.id === mapped.id) ? gs.map((g) => (g.id === mapped.id ? mapped : g)) : gs.concat(mapped)));
+    return mapped;
+  }, [mapGroup]);
+
+  const startGroupSplit = useCallback(async ({ tourId, departureId, participantNames }) => {
+    const res = await api.post('/booking/group/start', { tourId, departureId, participantNames });
+    if (!res.ok) return { ok: false, message: res.error.message };
+    const group = upsertGroup(res.data);
+    return { ok: true, id: group.id };
+  }, [upsertGroup]);
+
+  // Re-reads the real, server-authoritative status — a participant may have
+  // no account at all (§3), so this is the source of truth on every mount,
+  // not whatever (if anything) already happens to be in local `groups`.
+  const fetchGroup = useCallback(async (groupId) => {
+    const res = await api.get(`/booking/group/${groupId}`);
+    if (!res.ok) return { ok: false, message: res.error.message };
+    return { ok: true, group: upsertGroup(res.data) };
+  }, [upsertGroup]);
+
+  const payShare = useCallback(async (groupId, index) => {
+    const res = await api.post(`/booking/group/${groupId}/participants/${index}/pay`);
+    if (!res.ok) return { ok: false, message: res.error.message };
+    const group = upsertGroup(res.data);
+    if (group.status === 'confirmed' && group.bookingRef) await fetchHistory();
+    return { ok: true, group };
+  }, [upsertGroup, fetchHistory]);
+
+  // The 24h window is server-side truth (deadlineAt), not something the
+  // client can force — this just re-fetches so the UI reflects the real
+  // lazy-settled state once the client's own countdown reaches zero.
+  const lapseGroup = useCallback((groupId) => {
+    fetchGroup(groupId);
+  }, [fetchGroup]);
 
   // --- cancellation --------------------------------------------------------
   // `overridePct` lets a caller that already knows the correct refund rate
@@ -327,6 +344,7 @@ export function BookingProvider({ children }) {
     acceptRequest,
     declineRequest,
     startGroupSplit,
+    fetchGroup,
     payShare,
     lapseGroup,
     cancelBooking,
@@ -334,7 +352,7 @@ export function BookingProvider({ children }) {
     avail, lock, paymentState, bookings, requests, groups,
     startLock, setGuests, applyPromo, chooseMethod, beginCapture, expireLock, clearLock,
     totalsFor, checkBookingStatus, fetchHistory, createRequest, acceptRequest, declineRequest,
-    startGroupSplit, payShare, lapseGroup, cancelBooking,
+    startGroupSplit, fetchGroup, payShare, lapseGroup, cancelBooking,
   ]);
 
   return <BookingContext.Provider value={value}>{children}</BookingContext.Provider>;

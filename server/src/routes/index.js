@@ -3,6 +3,7 @@ const adminConfigRoutes = require("./admin/config.routes");
 const identityRoutes = require("./identity");
 const discoverRoutes = require("./discover");
 const bookingRoutes = require("./booking");
+const groupRoutes = require("./booking/group.routes");
 const webhookRoutes = require("./webhooks");
 const vendorRoutes = require("./vendor");
 
@@ -13,6 +14,10 @@ const router = express.Router();
 router.use("/admin", adminConfigRoutes);
 router.use("/identity", identityRoutes);
 router.use("/discover", discoverRoutes);
+// Mounted at the more specific path FIRST — group-split's participant
+// endpoints must stay reachable with no auth (§3), so they can't live behind
+// bookingRoutes' blanket `router.use(requireAuth)` below.
+router.use("/booking/group", groupRoutes);
 router.use("/booking", bookingRoutes);
 router.use("/webhooks", webhookRoutes);
 router.use("/vendor", vendorRoutes);

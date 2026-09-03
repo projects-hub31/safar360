@@ -2,21 +2,37 @@ import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useApp } from '../../context/app/useApp';
 import { useBooking } from '../../context/booking/useBooking';
-import { GROUP_WINDOW_HOURS } from '../../context/booking/booking-context';
-import { TOURS } from '../../data/traveler/tours';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';
 import StatusPill from '../../components/ui/StatusPill';
 import Countdown from '../../components/ui/Countdown';
+import EmptyState from '../../components/ui/EmptyState';
 
 const PILL = { paid: 'success', unpaid: 'warning', declined: 'danger' };
 
+// Countdown expects a whole-second duration, not an absolute deadline (same
+// convention as admin/Kyc.jsx's slaSeconds) — a module-level helper, not an
+// inline `Date.now()` in JSX, keeps the component's own render pure.
+function secondsUntil(deadlineAt) {
+  return Math.max(0, Math.round((deadlineAt - Date.now()) / 1000));
+}
+
 function NewGroupForm({ seed, onCreate }) {
   const [names, setNames] = useState(['You', '', '']);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
   const setName = (i, v) => setNames((ns) => ns.map((n, idx) => (idx === i ? v : n)));
   const addRow = () => setNames((ns) => ns.concat(''));
   const ready = names.filter((n) => n.trim()).length >= 2;
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    const res = await onCreate(names.filter((n) => n.trim()));
+    setSubmitting(false);
+    if (!res.ok) setError(res.message || 'Could not start the split. Try again.');
+  };
 
   return (
     <Card className="flex flex-col gap-3 p-5 sm:p-6">
@@ -28,14 +44,11 @@ function NewGroupForm({ seed, onCreate }) {
       {names.map((n, i) => (
         <TextField key={i} label={`Participant ${i + 1}`} value={n} onChange={(e) => setName(i, e.target.value)} disabled={i === 0} />
       ))}
+      {error && <p role="alert" className="text-xs leading-relaxed text-danger-text">{error}</p>}
       <div className="flex gap-2">
         <Button variant="secondary" size="sm" onClick={addRow}>Add another</Button>
-        <Button
-          size="sm"
-          disabled={!ready}
-          onClick={() => onCreate(names.filter((n) => n.trim()))}
-        >
-          Start the split
+        <Button size="sm" disabled={!ready || submitting} onClick={submit}>
+          {submitting ? 'Starting…' : 'Start the split'}
         </Button>
       </div>
     </Card>
@@ -47,6 +60,8 @@ export default function GroupSplit() {
   const { formatMoney } = useApp();
   const { groups, startGroupSplit, payShare, lapseGroup } = useBooking();
   const [nudged, setNudged] = useState({});
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState(null);
 
   // Tracked by id, not re-derived from `groups` each render — once a split
   // is created we keep showing that exact one through open → confirmed/
@@ -61,24 +76,44 @@ export default function GroupSplit() {
   });
   const group = groups.find((g) => g.id === activeGroupId);
 
-  const seedTour = TOURS.find((t) => t.id === location.state?.tourId) || TOURS[0];
+  // A real group-split needs a real tour/departure id (server/src/routes/
+  // booking/group.routes.js) — TourDetail only surfaces this link once the
+  // live tour has loaded, so reaching this screen with none in `state` means
+  // a stale bookmark/back-navigation, not a legitimate flow to seed fake data
+  // for.
   const seed = {
-    tourId: location.state?.tourId || seedTour.id,
-    title: location.state?.title || seedTour.title,
-    price: location.state?.price || seedTour.price,
+    tourId: location.state?.tourId,
+    departureId: location.state?.departureId,
+    title: location.state?.title,
+    price: location.state?.price,
   };
+
+  if (!group && !seed.tourId) {
+    return (
+      <EmptyState
+        title="Start a split from a tour page"
+        body="Group splits open from a specific trip and departure — go back to the tour you want to split and choose “Split the cost with the group instead.”"
+        actionLabel="Browse trips"
+        actionTo="/discover/search"
+      />
+    );
+  }
 
   if (!group) {
     return (
       <NewGroupForm
         seed={seed}
-        onCreate={(names) => setActiveGroupId(startGroupSplit({ ...seed, participantNames: names }))}
+        onCreate={async (names) => {
+          const res = await startGroupSplit({ ...seed, participantNames: names });
+          if (res.ok) setActiveGroupId(res.id);
+          return res;
+        }}
       />
     );
   }
 
   const paidCount = group.participants.filter((p) => p.status === 'paid').length;
-  const total = group.price * group.participants.length;
+  const total = group.total;
   const shortfall = (group.participants.length - paidCount) * group.price;
 
   return (
@@ -87,7 +122,12 @@ export default function GroupSplit() {
         <div className="flex items-center justify-between gap-3">
           <span className="font-display text-lg font-semibold tracking-tight">{group.title}</span>
           {group.status === 'open' && (
-            <Countdown key={group.id} seconds={GROUP_WINDOW_HOURS * 3600} urgentAt={3600} onExpire={() => lapseGroup(group.id)} />
+            <Countdown
+              key={group.id}
+              seconds={secondsUntil(group.deadlineAt)}
+              urgentAt={3600}
+              onExpire={() => lapseGroup(group.id)}
+            />
           )}
         </div>
         <span className="text-sm text-fg-muted">
@@ -107,14 +147,14 @@ export default function GroupSplit() {
         )}
         {group.status === 'lapsed' && (
           <div className="rounded-xl border border-danger bg-danger-soft px-3.5 py-2.5 text-[13px] leading-relaxed text-danger-text">
-            The 24-hour window closed with {group.participants.length - paidCount} unpaid. Everyone who did pay
-            has been refunded in full.
+            {group.outcomeReason || 'This window has closed. Everyone who paid has been refunded in full.'}
           </div>
         )}
       </Card>
 
       <Card className="flex flex-col gap-2 p-4 sm:p-5">
         <strong className="mb-1 text-sm">Participants</strong>
+        {payError && <p role="alert" className="text-xs leading-relaxed text-danger-text">{payError}</p>}
         {group.participants.map((p, i) => (
           <div key={i} className="flex flex-col gap-1.5 border-t border-border py-2 first:border-0 first:pt-0">
             <div className="flex items-center justify-between gap-2">
@@ -122,7 +162,19 @@ export default function GroupSplit() {
               <div className="flex items-center gap-2">
                 <StatusPill tone={PILL[p.status] || 'neutral'}>{p.status}</StatusPill>
                 {group.status === 'open' && p.status === 'unpaid' && i === 0 && (
-                  <Button size="sm" onClick={() => payShare(group.id, i)}>Pay my share</Button>
+                  <Button
+                    size="sm"
+                    disabled={paying}
+                    onClick={async () => {
+                      setPaying(true);
+                      setPayError(null);
+                      const res = await payShare(group.id, i);
+                      setPaying(false);
+                      if (!res.ok) setPayError(res.message);
+                    }}
+                  >
+                    {paying ? 'Paying…' : 'Pay my share'}
+                  </Button>
                 )}
                 {group.status === 'open' && p.status === 'unpaid' && i !== 0 && (
                   <Button size="sm" variant="secondary" disabled={nudged[i]} onClick={() => setNudged((n) => ({ ...n, [i]: true }))}>
