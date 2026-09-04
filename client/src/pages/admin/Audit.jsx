@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAdmin } from '../../context/admin/useAdmin';
 import { AUDIT_FILTERS } from '../../context/admin/admin-context';
 import PermGate from '../../components/admin/PermGate';
@@ -11,14 +11,10 @@ function fmtAt(at) {
 }
 
 export default function Audit() {
-  const { audit } = useAdmin();
+  const { audit, fetchAudit } = useAdmin();
   const [filter, setFilter] = useState('all');
 
-  const rows = audit.filter((r) => {
-    if (filter === 'all') return true;
-    if (filter === 'refused') return r.refused;
-    return r.category === filter;
-  });
+  useEffect(() => { fetchAudit(filter); }, [fetchAudit, filter]);
 
   const columns = [
     { key: 'at', label: 'When', render: (r) => <span dir="ltr" className="font-mono text-xs">{fmtAt(r.at)}</span> },
@@ -51,7 +47,7 @@ export default function Audit() {
             </button>
           ))}
         </div>
-        <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} emptyTitle="Nothing matches this filter" />
+        <DataTable columns={columns} rows={audit} rowKey={(r) => r.id} emptyTitle="Nothing matches this filter" />
       </div>
     </PermGate>
   );

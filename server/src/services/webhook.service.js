@@ -43,6 +43,47 @@ async function restoreSeat(tourId, departureId, seats) {
   );
 }
 
+// The one real-capture code path — the atomic seat deduction plus
+// plan-driven commission accrual — shared by the webhook's own `confirmed`
+// branch below AND the admin fraud queue's "Clear" action
+// (controllers/admin/fraud.controller.js), which is exactly the same
+// capture a webhook would have performed had the payment not been held for
+// review first (§3: "no parallel path"). Mutates `payment`/`booking` in
+// place; the caller saves both.
+async function capturePayment(payment, booking) {
+  const updatedTour = await deductSeat(booking.tour, booking.departureId, booking.seats);
+  if (!updatedTour) {
+    payment.status = "failed";
+    payment.failureReason = FAIL_REASONS["sold-out"];
+    booking.paymentState = "failed";
+    booking.status = "failed";
+    booking.outcomeReason = FAIL_REASONS["sold-out"];
+    booking.outcomeKind = "sold-out";
+    return { ok: false, reason: "sold-out" };
+  }
+
+  payment.status = "confirmed";
+  booking.paymentState = "confirmed";
+  booking.status = "confirmed";
+  booking.outcomeKind = "confirmed";
+
+  // Plan-driven commission, CLAUDE.md §3: read the vendor's own subscribed
+  // rate first, falling back to Policy.commissionPct only when the tour has
+  // no real owner (legacy/seed data) or the vendor has no active/grace
+  // subscription.
+  const vendorRate = await subscriptionService.getCommissionRate(updatedTour.ownerId);
+  const rate = vendorRate ?? (await Policy.getSingleton()).commissionPct / 100;
+  await ledgerService.accrueCommission({
+    ref: booking.ref,
+    party: updatedTour.operator,
+    label: `Commission on ${booking.ref}`,
+    gross: booking.amounts.total,
+    rate,
+    via: booking.method,
+  });
+  return { ok: true };
+}
+
 // The sole authority on a payment outcome (CLAUDE.md §3: "the webhook is the
 // sole authority — nothing captures on the client's word"). Called both by
 // the real Express route (`controllers/booking/webhook.controller.js`) and,
@@ -107,37 +148,7 @@ async function processPaymentWebhook(payload, signature) {
     booking.outcomeReason = FAIL_REASONS.late;
     booking.outcomeKind = "late";
   } else if (status === "confirmed") {
-    const updatedTour = await deductSeat(booking.tour, booking.departureId, booking.seats);
-    if (!updatedTour) {
-      payment.status = "failed";
-      payment.failureReason = FAIL_REASONS["sold-out"];
-      booking.paymentState = "failed";
-      booking.status = "failed";
-      booking.outcomeReason = FAIL_REASONS["sold-out"];
-      booking.outcomeKind = "sold-out";
-    } else {
-      payment.status = "confirmed";
-      booking.paymentState = "confirmed";
-      booking.status = "confirmed";
-      booking.outcomeKind = "confirmed";
-
-      const tourDoc = updatedTour;
-      // Plan-driven commission, CLAUDE.md §3: read the vendor's own
-      // subscribed rate first, falling back to Policy.commissionPct only
-      // when the tour has no real owner (legacy/seed data) or the vendor
-      // has no active/grace subscription — the follow-up wiring §9's day
-      // 4-7 log flagged as pending until the vendor module existed.
-      const vendorRate = await subscriptionService.getCommissionRate(tourDoc.ownerId);
-      const rate = vendorRate ?? (await Policy.getSingleton()).commissionPct / 100;
-      await ledgerService.accrueCommission({
-        ref: booking.ref,
-        party: tourDoc.operator,
-        label: `Commission on ${booking.ref}`,
-        gross: booking.amounts.total,
-        rate,
-        via: booking.method,
-      });
-    }
+    await capturePayment(payment, booking);
   }
 
   await payment.save();
@@ -146,4 +157,4 @@ async function processPaymentWebhook(payload, signature) {
   return { ok: true, paymentStatus: payment.status };
 }
 
-module.exports = { processPaymentWebhook, deductSeat, restoreSeat, FAIL_REASONS };
+module.exports = { processPaymentWebhook, capturePayment, deductSeat, restoreSeat, FAIL_REASONS };

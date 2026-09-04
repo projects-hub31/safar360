@@ -15,6 +15,11 @@ const paymentSchema = new mongoose.Schema(
     status: { type: String, enum: ["pending", "confirmed", "failed", "held"], default: "pending" },
     fraudScore: { type: Number, default: 0 },
     fraudFactors: [fraudFactorSchema],
+    // "Ask-for-ID holds without penalizing" (§3 fraud review) — the one
+    // resolution that doesn't change `status` at all, so it needs its own
+    // flag to distinguish "still held, untouched" from "still held, admin
+    // already asked" in the admin fraud queue's display.
+    fraudAskedForId: { type: Boolean, default: false },
     failureReason: String,
     webhookVerifiedAt: Date,
   },

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/app/useApp';
 import { useTransport } from '../../context/transport/useTransport';
 import { SEASON_MULTIPLIERS } from '../../context/transport/transport-context';
@@ -15,7 +15,7 @@ const SEASONS = [
 
 export default function Rooms() {
   const { formatMoney } = useApp();
-  const { rooms, setRoomTotal, addRoom } = useTransport();
+  const { rooms, fetchRooms, setRoomTotal, addRoom } = useTransport();
   const [season, setSeason] = useState('shoulder');
   const [floorNote, setFloorNote] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -24,17 +24,23 @@ export default function Rooms() {
   const [nightlyRate, setNightlyRate] = useState('');
   const [total, setTotal] = useState(1);
 
-  const onSetTotal = (id, value) => {
-    const result = setRoomTotal(id, Number(value));
+  useEffect(() => {
+    fetchRooms();
+    // Runs once on mount — fetchRooms is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onSetTotal = async (id, value) => {
+    const result = await setRoomTotal(id, Number(value));
     if (!result.ok) {
       setFloorNote({ id, floor: result.floor });
       setTimeout(() => setFloorNote(null), 4000);
     }
   };
 
-  const onAddRoom = () => {
+  const onAddRoom = async () => {
     if (!name.trim() || !(Number(nightlyRate) > 0)) return;
-    addRoom({ name, capacity: Number(capacity), nightlyRate: Number(nightlyRate), total: Number(total) });
+    await addRoom({ name, capacity: Number(capacity), nightlyRate: Number(nightlyRate), total: Number(total) });
     setName(''); setNightlyRate(''); setCapacity(2); setTotal(1); setAdding(false);
   };
 

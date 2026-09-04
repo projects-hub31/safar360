@@ -1,17 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAdmin } from '../../context/admin/useAdmin';
 import { useApp } from '../../context/app/useApp';
-import { ADMIN_ROSTER } from '../../context/admin/admin-context';
 import PermGate from '../../components/admin/PermGate';
-import { Card, Button, StatusPill, TextField } from '../../components/ui';
+import { Card, Button, StatusPill } from '../../components/ui';
 
 export default function PayoutBatch() {
-  const { payoutCandidates, batch, prepareBatch, approveBatch, resetBatch } = useAdmin();
+  const { payoutCandidates, fetchPayoutCandidates, batch, prepareBatch, approveBatch, resetBatch } = useAdmin();
   const { formatMoney } = useApp();
   const [selected, setSelected] = useState(new Set());
-  const [preparer, setPreparer] = useState('');
-  const [approver, setApprover] = useState('');
   const [error, setError] = useState('');
+
+  useEffect(() => { fetchPayoutCandidates(); }, [fetchPayoutCandidates]);
 
   const toggle = (id) => setSelected((s) => {
     const next = new Set(s);
@@ -19,18 +18,17 @@ export default function PayoutBatch() {
     return next;
   });
 
-  const onPrepare = () => {
-    const res = prepareBatch([...selected], preparer);
+  const onPrepare = async () => {
+    const res = await prepareBatch([...selected]);
     setError(res.ok ? '' : res.error);
   };
 
-  const onApprove = () => {
-    const res = approveBatch(approver);
+  const onApprove = async () => {
+    const res = await approveBatch();
     setError(res.ok ? '' : res.error);
   };
 
   const selectedTotal = payoutCandidates.filter((c) => selected.has(c.id)).reduce((n, c) => n + c.amount, 0);
-  const batchTotal = payoutCandidates.filter((c) => batch.candidateIds.includes(c.id)).reduce((n, c) => n + c.amount, 0);
 
   return (
     <PermGate permKey="finance">
@@ -65,15 +63,17 @@ export default function PayoutBatch() {
                   <span className="font-mono">{formatMoney(c.amount)}</span>
                 </label>
               ))}
+              {payoutCandidates.length === 0 && (
+                <span className="py-2 text-sm text-fg-muted">No pending payouts right now.</span>
+              )}
             </Card>
             <Card className="flex flex-col gap-3 p-4 sm:p-5">
               <div className="flex justify-between text-sm font-semibold">
                 <span>Selected total</span>
                 <span className="font-mono">{formatMoney(selectedTotal)}</span>
               </div>
-              <TextField label="Prepared by" placeholder="Your name" value={preparer} onChange={(e) => setPreparer(e.target.value)} />
               {error && <span className="text-xs text-danger-text">{error}</span>}
-              <Button onClick={onPrepare} disabled={selected.size === 0 || !preparer}>Prepare batch</Button>
+              <Button onClick={onPrepare} disabled={selected.size === 0}>Prepare batch</Button>
             </Card>
           </>
         )}
@@ -82,20 +82,13 @@ export default function PayoutBatch() {
           <Card className="flex flex-col gap-3 p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <StatusPill tone="warning">Prepared</StatusPill>
-              <span className="font-mono font-semibold">{formatMoney(batchTotal)}</span>
+              <span className="font-mono font-semibold">{formatMoney(batch.totalAmount)}</span>
             </div>
-            <span className="text-sm text-fg-muted">Prepared by <strong>{batch.preparedBy}</strong> — a different reviewer must approve.</span>
-            <TextField
-              label="Approve as"
-              placeholder="A different name than the preparer"
-              value={approver}
-              onChange={(e) => setApprover(e.target.value)}
-              helper={`Suggested reviewers: ${ADMIN_ROSTER.join(', ')}`}
-            />
+            <span className="text-sm text-fg-muted">Prepared by <strong>{batch.preparedBy}</strong> — a different signed-in admin must approve.</span>
             {error && <span className="text-xs text-danger-text">{error}</span>}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={onApprove} disabled={!approver}>Approve and release — {formatMoney(batchTotal)}</Button>
-              <Button variant="secondary" onClick={() => { resetBatch(); setSelected(new Set()); setPreparer(''); setApprover(''); setError(''); }}>Discard batch</Button>
+              <Button onClick={onApprove}>Approve and release — {formatMoney(batch.totalAmount)}</Button>
+              <Button variant="secondary" onClick={() => { resetBatch(); setSelected(new Set()); setError(''); }}>Discard batch</Button>
             </div>
           </Card>
         )}
@@ -104,9 +97,9 @@ export default function PayoutBatch() {
           <Card className="flex flex-col gap-2 p-4 sm:p-5">
             <StatusPill tone="success">Released</StatusPill>
             <span className="text-sm text-fg-muted">
-              Prepared by {batch.preparedBy}, approved by {batch.approvedBy} — {formatMoney(batchTotal)} released.
+              Prepared by {batch.preparedBy}, approved by {batch.approvedBy} — {formatMoney(batch.totalAmount)} released.
             </span>
-            <Button variant="secondary" onClick={() => { resetBatch(); setSelected(new Set()); setPreparer(''); setApprover(''); }}>Start a new batch</Button>
+            <Button variant="secondary" onClick={() => { resetBatch(); setSelected(new Set()); setError(''); fetchPayoutCandidates(); }}>Start a new batch</Button>
           </Card>
         )}
       </div>

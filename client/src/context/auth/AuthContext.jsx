@@ -251,15 +251,23 @@ export function AuthProvider({ children }) {
   }, [persistUser]);
 
   // Admin has no self-registration (§4/§9 — a real admin account is seeded
-  // server-side, never created from the client), so it's the one role that
-  // stays a local-only mock — clearly not a real capability, same as every
-  // testing lever here. No real admin endpoints exist yet for it to fail
-  // against either way (module 09's backend isn't built).
-  const mockAdminUser = useCallback(() => {
-    setAccessToken(null);
-    persistUser({ name: 'Test Admin', phone: '3000000000', email: null, role: 'admin', verified: true, kycStatus: null, kycReason: null });
+  // server-side, never created from the client) — the real
+  // /identity/auth/dev-admin-signin endpoint is the sanctioned exception,
+  // the same "one fixed test account, dev-only" shape as the OTP dev-bypass
+  // code, since without SOME way to reach a real admin session, module 09's
+  // now-real backend (RBAC, fraud, disputes, payout batches, config, audit)
+  // would be completely unreachable from this app's own UI. Defaults to
+  // 'super'; `switchAdminRole` below re-authenticates as a different
+  // sub-role's own fixed account (the header's "Sub-role" selector).
+  const signInAsAdmin = useCallback(async (adminRole = 'super') => {
+    const res = await api.post('/identity/auth/dev-admin-signin', { adminRole }, { auth: false });
+    if (!res.ok) return { ok: false, message: res.error.message };
+    setAccessToken(res.data.accessToken);
+    persistUser(res.data.user);
     return { ok: true };
   }, [persistUser]);
+
+  const switchAdminRole = useCallback((adminRole) => signInAsAdmin(adminRole), [signInAsAdmin]);
 
   // Testing-only shortcut, not part of the wireframe spec — signs straight
   // in as a fresh test account for any of the 7 roles with no phone/OTP
@@ -269,7 +277,7 @@ export function AuthProvider({ children }) {
   // model does not decide, a person decides" — the same principle applies
   // here) — walk the real KYC/subscription flow from a fresh account, same
   // as any real vendor would.
-  const quickSignIn = useCallback((roleId) => (roleId === 'admin' ? mockAdminUser() : signInAsRealRole(roleId)), [mockAdminUser, signInAsRealRole]);
+  const quickSignIn = useCallback((roleId) => (roleId === 'admin' ? signInAsAdmin('super') : signInAsRealRole(roleId)), [signInAsAdmin, signInAsRealRole]);
 
   // Still the mock path for the roles the real KYC backend doesn't support
   // yet (transport/property/seller — see utils/kycDocs.js's own note); the
@@ -315,7 +323,7 @@ export function AuthProvider({ children }) {
   // vendor module's real `requireRole('operator')` gate. Still not real
   // multi-tenancy (each role is its own fixed test account, not the current
   // human's account), just an honest version of the same demo shortcut.
-  const switchRole = useCallback((roleId) => (roleId === 'admin' ? mockAdminUser() : signInAsRealRole(roleId)), [mockAdminUser, signInAsRealRole]);
+  const switchRole = useCallback((roleId) => (roleId === 'admin' ? signInAsAdmin('super') : signInAsRealRole(roleId)), [signInAsAdmin, signInAsRealRole]);
 
   const value = useMemo(() => ({
     user,
@@ -337,10 +345,11 @@ export function AuthProvider({ children }) {
     refreshUser,
     setKycStatus,
     switchRole,
+    switchAdminRole,
   }), [
     user, signupRole, pending, chooseRole, startRegister, startOAuth, startReset,
     resendOtp, verifyOtp, completeReset, login, signOut, quickSignIn, submitKyc,
-    fetchKycDocuments, submitKycDocument, refreshUser, setKycStatus, switchRole,
+    fetchKycDocuments, submitKycDocument, refreshUser, setKycStatus, switchRole, switchAdminRole,
   ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

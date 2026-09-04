@@ -1,6 +1,7 @@
 const express = require("express");
 const requireAuth = require("../../middleware/auth");
 const requireRole = require("../../middleware/requireRole");
+const requireAdminPerm = require("../../middleware/requireAdminPerm");
 const subscriptionController = require("../../controllers/vendor/subscription.controller");
 const kycController = require("../../controllers/vendor/kyc.controller");
 const listingsController = require("../../controllers/vendor/listings.controller");
@@ -14,9 +15,11 @@ router.use(requireAuth);
 
 // KYC review (and the queue that feeds it) is admin-only — mounted before
 // the blanket vendor-role gate below, since a sub-admin doing KYC review is
-// never an 'operator'.
-router.get("/kyc/documents/queue", requireRole("admin"), kycController.queue);
-router.post("/kyc/documents/:id/review", requireRole("admin"), kycController.review);
+// never an 'operator'. Scoped further to the real `kyc` sub-permission
+// (super|sub, §3 Admin RBAC) — this previously only checked role==='admin',
+// which let a finance-only admin review KYC despite the matrix saying no.
+router.get("/kyc/documents/queue", requireRole("admin"), requireAdminPerm("kyc"), kycController.queue);
+router.post("/kyc/documents/:id/review", requireRole("admin"), requireAdminPerm("kyc"), kycController.review);
 
 // Everything else in this module is the tour-operator's own vendor console
 // (module 04 scope — transport/property owners get their own module, 05).

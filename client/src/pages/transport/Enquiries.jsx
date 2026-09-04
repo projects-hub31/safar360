@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/app/useApp';
 import { useTransport } from '../../context/transport/useTransport';
-import { QUOTE_EXPIRY_OPTIONS, LEAD_WINDOW_HOURS } from '../../context/transport/transport-context';
+import { QUOTE_EXPIRY_OPTIONS } from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';
@@ -9,6 +9,10 @@ import ChoiceCard from '../../components/ui/ChoiceCard';
 import StatusPill from '../../components/ui/StatusPill';
 import Countdown from '../../components/ui/Countdown';
 import EmptyState from '../../components/ui/EmptyState';
+
+function remainingSeconds(deadlineAt) {
+  return Math.max(0, Math.round((deadlineAt - Date.now()) / 1000));
+}
 
 const TABS = [
   { id: 'request', label: 'Awaiting' },
@@ -48,9 +52,15 @@ function ReplyForm({ onSend, onDecline }) {
 
 export default function Enquiries() {
   const { formatMoney } = useApp();
-  const { leads, sendQuote, declineLead, withdrawQuote, previewLeadOutcome } = useTransport();
+  const { leads, fetchLeadsInbox, sendQuote, declineLead, withdrawQuote } = useTransport();
   const [tab, setTab] = useState('request');
   const [openId, setOpenId] = useState(null);
+
+  useEffect(() => {
+    fetchLeadsInbox();
+    // Runs once on mount — fetchLeadsInbox is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const propertyLeads = leads.filter((l) => l.kind === 'table' || l.kind === 'group');
   const rows = propertyLeads.filter((l) => l.status === tab).slice().reverse();
@@ -93,7 +103,7 @@ export default function Enquiries() {
                 <StatusPill tone={PILL[l.status] || 'neutral'}>{l.status}</StatusPill>
                 {l.status === 'request' && (
                   <span className="flex items-center gap-1.5 rounded-md border border-warning bg-warning-soft px-2 py-1 text-[11px] font-semibold text-warning-text">
-                    Reply within <Countdown seconds={LEAD_WINDOW_HOURS * 3600} urgentAt={21600} />
+                    Reply within <Countdown key={l.id} seconds={remainingSeconds(l.deadlineAt)} urgentAt={21600} />
                   </span>
                 )}
               </button>
@@ -110,18 +120,12 @@ export default function Enquiries() {
                 <div className="flex flex-col gap-2 border-t border-border pt-3">
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-fg-muted">Expires in</span>
-                    <Countdown seconds={l.quote.expiryHours * 3600} urgentAt={3600} />
+                    <Countdown key={l.id} seconds={remainingSeconds(l.quote.expiresAt)} urgentAt={3600} />
                   </div>
                   <Button size="sm" variant="destructive" onClick={() => withdrawQuote(l.id)}>Withdraw quote</Button>
-                  <div className="border-t border-border pt-2">
-                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-fg-subtle">
-                      Preview · no traveller review screen built yet
-                    </span>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="secondary" onClick={() => previewLeadOutcome(l.id, 'accepted')}>If accepted</Button>
-                      <Button size="sm" variant="secondary" onClick={() => previewLeadOutcome(l.id, 'expired')}>If expired</Button>
-                    </div>
-                  </div>
+                  <p className="border-t border-border pt-2 text-xs leading-relaxed text-fg-subtle">
+                    The traveller reviews and accepts this from their own "My enquiries" screen.
+                  </p>
                 </div>
               )}
             </Card>

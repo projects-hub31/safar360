@@ -1,12 +1,15 @@
+import { useEffect } from 'react';
 import { useApp } from '../../context/app/useApp';
-import { useAuth } from '../../context/auth/useAuth';
 import { useTransport } from '../../context/transport/useTransport';
-import { LEAD_WINDOW_HOURS } from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';
 import Countdown from '../../components/ui/Countdown';
 import EmptyState from '../../components/ui/EmptyState';
+
+function remainingSeconds(deadlineAt) {
+  return Math.max(0, Math.round((deadlineAt - Date.now()) / 1000));
+}
 
 const KIND_LABEL = { transport: 'Vehicle', table: 'Dinner table', group: 'Group event' };
 const STATUS_PILL = {
@@ -26,11 +29,17 @@ const STATUS_PILL = {
 // screen at all for what happens after "Enquiry sent").
 export default function Enquiries() {
   const { formatMoney } = useApp();
-  const { user } = useAuth();
-  const { leads, acceptLead } = useTransport();
+  const { leads, fetchMyLeads, acceptLead } = useTransport();
 
-  const guestName = user?.name || 'Traveller';
-  const mine = leads.filter((l) => l.name === guestName).slice().sort((a, b) => b.createdAt - a.createdAt);
+  useEffect(() => {
+    fetchMyLeads();
+    // Runs once on mount — fetchMyLeads is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // leads is already traveller-scoped by the real endpoint
+  // (GET /transport/leads/mine) — no local name matching needed.
+  const mine = leads.slice().sort((a, b) => b.createdAt - a.createdAt);
 
   if (!mine.length) {
     return (
@@ -65,10 +74,7 @@ export default function Enquiries() {
             {l.note && <span className="text-xs text-fg-muted">“{l.note}”</span>}
 
             {l.status === 'request' && (
-              // Full-window duration, same simplification as Inbox/AwaitingAccept
-              // (§7: Countdown never reads a stored deadline against the wall
-              // clock in render — a plain duration set once by the caller).
-              <span className="text-xs text-fg-muted">Owner replies within <Countdown key={l.id} seconds={LEAD_WINDOW_HOURS * 3600} urgentAt={3600} /></span>
+              <span className="text-xs text-fg-muted">Owner replies within <Countdown key={l.id} seconds={remainingSeconds(l.deadlineAt)} urgentAt={3600} /></span>
             )}
 
             {l.status === 'quoted' && (
@@ -83,7 +89,7 @@ export default function Enquiries() {
                   <span>Quoted total</span>
                   <span className="font-mono">{formatMoney(l.quote.total)}</span>
                 </div>
-                <span className="text-xs text-fg-muted">Quote expires in <Countdown key={`${l.id}-q`} seconds={l.quote.expiryHours * 3600} urgentAt={3600} /></span>
+                <span className="text-xs text-fg-muted">Quote expires in <Countdown key={`${l.id}-q`} seconds={remainingSeconds(l.quote.expiresAt)} urgentAt={3600} /></span>
                 <Button onClick={() => acceptLead(l.id)} fullWidth>Accept quote — {formatMoney(l.quote.total)}</Button>
               </div>
             )}

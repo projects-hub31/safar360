@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/app/useApp';
 import { useTransport } from '../../context/transport/useTransport';
 import Card from '../../components/ui/Card';
@@ -10,8 +10,15 @@ import EmptyState from '../../components/ui/EmptyState';
 
 export default function Routes() {
   const { formatMoney } = useApp();
-  const { vehicles, routes, addRoute } = useTransport();
+  const { vehicles, routes, fetchVehicles, fetchRoutes, addRoute } = useTransport();
   const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    fetchVehicles();
+    fetchRoutes();
+    // Runs once on mount — both actions are stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [vehicleId, setVehicleId] = useState(vehicles[0]?.id || '');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');

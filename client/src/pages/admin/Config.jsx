@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAdmin } from '../../context/admin/useAdmin';
 import { useApp } from '../../context/app/useApp';
-import { POLICY_FIELDS, fraudScore } from '../../context/admin/admin-context';
+import { POLICY_FIELDS } from '../../context/admin/admin-context';
 import PermGate from '../../components/admin/PermGate';
 import { Card, Button } from '../../components/ui';
 
@@ -13,11 +13,10 @@ function effectPreview(key, draft, fraudQueue, formatMoney) {
       return (
         <ul className="flex flex-col gap-1">
           {fraudQueue.map((row) => {
-            const score = fraudScore(row);
-            const held = score >= draft.fraudThreshold;
+            const held = row.score >= draft.fraudThreshold;
             return (
               <li key={row.id} className="flex justify-between font-mono">
-                <span>{row.bookingRef} (score {score.toFixed(2)})</span>
+                <span>{row.bookingRef} (score {row.score.toFixed(2)})</span>
                 <span className={held ? 'text-danger-text' : 'text-success-text'}>{held ? 'would be held' : 'would pass'}</span>
               </li>
             );
@@ -42,18 +41,30 @@ function effectPreview(key, draft, fraudQueue, formatMoney) {
 }
 
 export default function Config() {
-  const { policy, savePolicy, fraudQueue } = useAdmin();
+  const { policy, fetchFraud } = useAdmin();
+
+  useEffect(() => { fetchFraud(); }, [fetchFraud]);
+
+  // `policy` starts `null` (AdminContext.jsx loads it from a public GET on
+  // mount) — wait for it rather than syncing a local draft to it via an
+  // effect (§7's own stated preference: force a remount over an effect that
+  // watches a prop and calls setState). ConfigForm below only ever mounts
+  // once policy is real, so its `useState(policy)` initial value is correct
+  // on the very first render, with no watch-and-sync needed afterward.
+  if (!policy) return null;
+  return <ConfigForm policy={policy} />;
+}
+
+function ConfigForm({ policy }) {
+  const { savePolicy, fraudQueue } = useAdmin();
   const { formatMoney } = useApp();
   const [draft, setDraft] = useState(policy);
 
   const dirty = POLICY_FIELDS.some((f) => draft[f.key] !== policy[f.key]);
 
-  const onSave = () => {
-    const changed = POLICY_FIELDS.filter((f) => draft[f.key] !== policy[f.key])
-      .map((f) => `${f.key} ${policy[f.key]} → ${draft[f.key]}`)
-      .join(', ');
-    if (!changed) return;
-    savePolicy(draft, changed);
+  const onSave = async () => {
+    if (!dirty) return;
+    await savePolicy(draft);
   };
 
   return (

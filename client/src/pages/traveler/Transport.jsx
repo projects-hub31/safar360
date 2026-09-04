@@ -1,34 +1,53 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/auth/useAuth';
 import { useTransport } from '../../context/transport/useTransport';
 import Button from '../../components/ui/Button';
 import TextField from '../../components/ui/TextField';
 import Stepper from '../../components/ui/Stepper';
 import StatusPill from '../../components/ui/StatusPill';
+import EmptyState from '../../components/ui/EmptyState';
 import vehJeep from '../../assets/traveler/veh-jeep.jpg';
 
 export default function Transport() {
-  const { user } = useAuth();
-  const { vehicles, createLead } = useTransport();
+  const { vehicles, fetchDiscoverVehicles, createLead } = useTransport();
+  // One arbitrary real vehicle (discover/vehicles.controller.js's own note —
+  // no real multi-owner transport search this pass, same single-demo-entity
+  // bridge as PropertyDetail.jsx's rooms) rather than the mock's fixed one.
   const vehicle = vehicles[0];
+
+  useEffect(() => {
+    fetchDiscoverVehicles();
+    // Runs once on mount — fetchDiscoverVehicles is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [date, setDate] = useState('');
   const [passengers, setPassengers] = useState(2);
   const [note, setNote] = useState('');
   const [sentId, setSentId] = useState(null);
+  const [sending, setSending] = useState(false);
 
-  const onSend = () => {
-    if (!date) return;
-    const id = createLead({
+  if (!vehicle) {
+    return (
+      <EmptyState
+        title="No vehicles listed yet"
+        body="No transport owner has a vehicle visible in search right now — check back soon."
+      />
+    );
+  }
+
+  const onSend = async () => {
+    if (!date || sending) return;
+    setSending(true);
+    const id = await createLead({
       kind: 'transport',
       subjectId: vehicle.id,
       subjectLabel: `${vehicle.name} · Gilgit → Hunza`,
-      name: user?.name || 'Traveller',
       date,
       count: passengers,
       note,
     });
+    setSending(false);
     setSentId(id);
   };
 
@@ -72,8 +91,8 @@ export default function Transport() {
               <Stepper value={passengers} onChange={setPassengers} min={1} max={vehicle.capacity} srLabel="passenger" />
             </div>
             <TextField label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Pickup point, luggage, timing…" />
-            <Button onClick={onSend} disabled={!date} size="lg" fullWidth>
-              Send enquiry
+            <Button onClick={onSend} disabled={!date || sending} size="lg" fullWidth>
+              {sending ? 'Sending…' : 'Send enquiry'}
             </Button>
           </>
         )}

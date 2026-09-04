@@ -1,188 +1,196 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AdminContext } from './admin-context';
-import {
-  KYC_QUEUE, FRAUD_QUEUE, DISPUTES, PAYOUT_CANDIDATES, DEFAULT_POLICY, AUDIT_SEED,
-} from './admin-context';
-import { useVendor } from '../vendor/useVendor';
+import { KYC_QUEUE, PLATFORM_LEDGER_EXTRA } from './admin-context';
+import { useAuth } from '../auth/useAuth';
 import { api } from '../../utils/api';
-import { REJECTION_LABELS } from '../../utils/kycDocs';
 
-// Module 09 (admin console). Fraud and disputes below are still seeded
-// multi-actor demo data — a single demo account can't produce a real
-// multi-vendor/multi-traveller queue on its own, the same limitation
-// VendorContext.SEED_LEDGER already documents a pattern for (see CLAUDE.md's
-// module 09 build note). What IS real: this session's own vendor ledger
-// (merged in on the Ledger screen), the social moderation queue
-// (SocialContext's real posts/reports — read directly by the Moderation
-// screen, not duplicated here), and now the KYC queue's `operator` rows
-// (GET /api/vendor/kyc/documents/queue — real document review only exists
-// server-side for that role, kyc.service.js's own comment) — `fetchKycQueue`
-// merges those in over the permanent seeded rows below (the same "seed stays,
-// real merges in" shape as SEED_LEDGER/LEGACY_SEED_REFS), since transport/
-// property/seller have no real KYC backend to replace their demo rows with
-// yet. Where a seeded row's `linkedLedgerId` points at a real VendorContext
-// ledger row (fr-1/dp-1 → LG-4002, dp-2 → LG-4004), resolving it for real
-// calls VendorContext.reverseLedger — everything else not covered above is a
-// local, honestly-scoped mutation of this file's own seed arrays.
+// Module 09 (admin console) — real end-to-end now: RBAC by sub-role (real
+// `adminRole` middleware server-side, mirrored here for the nav-by-absence
+// UI law), the KYC queue's `operator` rows, the platform ledger, fraud
+// review, disputes, payout batches, live policy config, and the audit log
+// every one of those writes to. `adminRole` is sourced from the real signed-
+// in admin account (AuthContext's `user.adminRole`, from a real JWT via
+// `/identity/auth/dev-admin-signin` — admin can't self-register, §4) rather
+// than a locally-editable variable — a fake local "sub-role preview" would
+// silently drift from what the server actually enforces (§2 law: "the
+// server is the truth"). Two things stay permanently seeded because no real
+// backend exists to replace them yet: `KYC_QUEUE`'s transport/property/
+// seller rows (real KYC review only covers `operator`) and
+// `PLATFORM_LEDGER_EXTRA`'s referral rows (no referral backend, §9 days
+// 12-13 not built) — same "seed stays, real merges in" shape
+// VendorContext.SEED_LEDGER already established.
 export function AdminProvider({ children }) {
-  const { reverseLedger: reverseVendorLedger } = useVendor();
+  const { user } = useAuth();
+  const adminRole = user?.role === 'admin' ? (user.adminRole || 'super') : null;
 
-  const [adminRole, setAdminRole] = useState('super');
-  const [policy, setPolicy] = useState(DEFAULT_POLICY);
+  const [policy, setPolicy] = useState(null);
   const [kycQueue, setKycQueue] = useState(KYC_QUEUE);
-  const [fraudQueue, setFraudQueue] = useState(FRAUD_QUEUE);
-  const [disputes, setDisputes] = useState(DISPUTES);
-  const [payoutCandidates] = useState(PAYOUT_CANDIDATES);
-  const [batch, setBatch] = useState({ status: 'draft', candidateIds: [], preparedBy: null, approvedBy: null, preparedAt: null, approvedAt: null });
-  const [audit, setAudit] = useState(AUDIT_SEED);
-  const nextId = useRef(1);
+  const [ledger, setLedger] = useState(PLATFORM_LEDGER_EXTRA);
+  const [fraudQueue, setFraudQueue] = useState([]);
+  const [disputes, setDisputes] = useState([]);
+  const [payoutCandidates, setPayoutCandidates] = useState([]);
+  const [batch, setBatch] = useState({ status: 'draft', totalAmount: 0, preparedBy: null, approvedBy: null, preparedAt: null, approvedAt: null });
+  const [audit, setAudit] = useState([]);
 
-  const logAction = useCallback(({ actor = 'You', action, target, category, tone = 'success', refused = false }) => {
-    setAudit((rows) => [{ id: `au-live-${nextId.current++}`, at: Date.now(), actor, action, target, category, tone, refused }, ...rows]);
+  // --- policy (§3 Policy object) — public read, fetched once at app start
+  // (many non-admin screens, e.g. transport/Money.jsx, read live policy too) --
+  const fetchConfig = useCallback(async () => {
+    const res = await api.get('/admin/config', { auth: false });
+    if (res.ok) setPolicy(res.data);
   }, []);
 
-  // --- KYC (§3 KYC — approve/reject mirrors AuthContext's shared setKycStatus
-  // semantics for this queue's own seeded rows; the one row genuinely tied to
-  // this session's live demo account is composed directly by the Kyc screen
-  // using useAuth().setKycStatus instead, so it doesn't get duplicated here) --
+  useEffect(() => {
+    api.get('/admin/config', { auth: false }).then((res) => {
+      if (res.ok) setPolicy(res.data);
+    });
+    // Runs once on mount only.
+  }, []);
+
+  const savePolicy = useCallback(async (patch) => {
+    const res = await api.patch('/admin/config', patch);
+    if (res.ok) setPolicy(res.data);
+    return res.ok ? { ok: true } : { ok: false, error: res.error.message };
+  }, []);
+
+  // --- KYC (real operator rows merge over the permanent seeded rows) -------
   const approveKyc = useCallback((id) => {
     const row = kycQueue.find((r) => r.id === id);
     if (!row) return;
     setKycQueue((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'approved', decidedAt: Date.now(), decidedBy: 'You', reasonId: null, reasonLabel: null } : r)));
-    logAction({ action: 'KYC approved', target: row.vendorName, category: 'kyc', tone: 'success' });
-  }, [kycQueue, logAction]);
+  }, [kycQueue]);
 
   const rejectKyc = useCallback((id, reasonId, reasonLabel) => {
     const row = kycQueue.find((r) => r.id === id);
     if (!row || !reasonId) return;
     setKycQueue((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'rejected', decidedAt: Date.now(), decidedBy: 'You', reasonId, reasonLabel } : r)));
-    logAction({ action: `KYC rejected — ${reasonLabel}`, target: row.vendorName, category: 'kyc', tone: 'danger' });
-  }, [kycQueue, logAction]);
+  }, [kycQueue]);
 
-  // Real rows (tagged `real: true`) are grouped per vendor but decided per
-  // document (§3: resubmission — and therefore review — is scoped per
-  // document, not the whole application) — replaces every previously-fetched
-  // real row wholesale rather than patching one in place, same shape as
-  // BookingContext.fetchHistory's "preserve seed, replace the rest."
   const fetchKycQueue = useCallback(async () => {
     const res = await api.get('/vendor/kyc/documents/queue');
     if (!res.ok) return { ok: false, message: res.error.message };
     const real = res.data.map((r) => ({
-      id: r.vendorId,
-      vendorId: r.vendorId,
-      vendorName: r.vendorName,
-      vendorType: r.vendorType,
-      status: r.status,
-      submittedAt: new Date(r.submittedAt).getTime(),
-      documents: r.documents,
-      real: true,
+      id: r.vendorId, vendorId: r.vendorId, vendorName: r.vendorName, vendorType: r.vendorType,
+      status: r.status, submittedAt: new Date(r.submittedAt).getTime(), documents: r.documents, real: true,
     }));
     setKycQueue((current) => [...current.filter((r) => !r.real), ...real]);
     return { ok: true };
   }, []);
 
-  const reviewKycDocument = useCallback(async (docId, decision, reason, vendorName, docType) => {
+  const reviewKycDocument = useCallback(async (docId, decision, reason) => {
     const res = await api.post(`/vendor/kyc/documents/${docId}/review`, decision === 'rejected' ? { decision, reason } : { decision });
     if (!res.ok) return { ok: false, message: res.error.message };
     await fetchKycQueue();
-    logAction({
-      action: decision === 'approved'
-        ? `KYC document approved — ${docType}`
-        : `KYC document rejected — ${docType} — ${REJECTION_LABELS[reason] || reason}`,
-      target: vendorName,
-      category: 'kyc',
-      tone: decision === 'approved' ? 'success' : 'danger',
-    });
     return { ok: true };
-  }, [fetchKycQueue, logAction]);
+  }, [fetchKycQueue]);
 
-  // --- Fraud review (§3 — three resolution actions map to ordinary actions) --
-  const clearFraud = useCallback((id) => {
-    const row = fraudQueue.find((r) => r.id === id);
-    if (!row) return;
-    setFraudQueue((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'cleared', resolvedAt: Date.now(), resolvedBy: 'You' } : r)));
-    logAction({ action: 'Fraud review cleared', target: row.bookingRef, category: 'money', tone: 'success' });
-  }, [fraudQueue, logAction]);
+  // --- ledger (real platform-wide view, permanent seeded referral rows
+  // merged in) --------------------------------------------------------------
+  const fetchLedger = useCallback(async () => {
+    const res = await api.get('/admin/ledger');
+    if (!res.ok) return;
+    const real = res.data.map((r) => ({ ...r, real: true }));
+    setLedger((current) => [...real, ...current.filter((r) => !r.real)]);
+  }, []);
 
-  const refundFraud = useCallback((id) => {
-    const row = fraudQueue.find((r) => r.id === id);
-    if (!row) return;
-    setFraudQueue((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'refunded', resolvedAt: Date.now(), resolvedBy: 'You' } : r)));
-    if (row.linkedLedgerId) reverseVendorLedger(row.linkedLedgerId);
-    logAction({ action: 'Fraud review refunded', target: row.bookingRef, category: 'money', tone: 'held' });
-  }, [fraudQueue, reverseVendorLedger, logAction]);
+  const reverseLedgerRow = useCallback(async (id) => {
+    const res = await api.post(`/admin/ledger/${id}/reverse`);
+    if (res.ok) setLedger((rows) => rows.map((r) => (r.id === id ? { ...res.data, real: true } : r)));
+    return res.ok ? { ok: true } : { ok: false, error: res.error.message };
+  }, []);
 
-  const askForId = useCallback((id) => {
-    const row = fraudQueue.find((r) => r.id === id);
-    if (!row) return;
-    setFraudQueue((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'ask-id' } : r)));
-    logAction({ action: 'Fraud review — asked traveller for ID', target: row.bookingRef, category: 'money', tone: 'warning' });
-  }, [fraudQueue, logAction]);
+  // --- fraud review (§3 — three resolution actions map to ordinary actions) --
+  const fetchFraud = useCallback(async () => {
+    const res = await api.get('/admin/fraud');
+    if (res.ok) setFraudQueue(res.data);
+  }, []);
 
-  // --- Disputes (§3 — refund in full / split / release, ordinary actions) ---
-  // VendorContext's ledger row shape only models a full reversal (no partial-
-  // amount state) — a real gap, not silently papered over: `split`/`release`
-  // record the resolution here but only `refund` (full) actually flips a
-  // linked ledger row, since that's the one case the existing shape supports.
-  const resolveDispute = useCallback((id, { type, amount, note }) => {
-    const row = disputes.find((d) => d.id === id);
-    if (!row || !note) return { ok: false, error: 'A reasoning note is required.' };
-    setDisputes((ds) => ds.map((d) => (d.id === id ? {
-      ...d, status: 'resolved', resolution: { type, amount, note, decidedAt: Date.now(), decidedBy: 'You' },
-    } : d)));
-    if (type === 'refund' && row.linkedLedgerId) reverseVendorLedger(row.linkedLedgerId);
-    logAction({ action: `Dispute resolved — ${type}`, target: `${row.id} · ${row.bookingRef}`, category: 'moderation', tone: 'held' });
+  const clearFraud = useCallback(async (id) => {
+    const res = await api.post(`/admin/fraud/${id}/clear`);
+    if (res.ok) setFraudQueue((rs) => rs.map((r) => (r.id === id ? res.data : r)));
+  }, []);
+
+  const refundFraud = useCallback(async (id) => {
+    const res = await api.post(`/admin/fraud/${id}/refund`);
+    if (res.ok) setFraudQueue((rs) => rs.map((r) => (r.id === id ? res.data : r)));
+  }, []);
+
+  const askForId = useCallback(async (id) => {
+    const res = await api.post(`/admin/fraud/${id}/ask-id`);
+    if (res.ok) setFraudQueue((rs) => rs.map((r) => (r.id === id ? res.data : r)));
+  }, []);
+
+  // --- disputes (§3 — refund in full / split / release, ordinary actions) ---
+  const fetchDisputes = useCallback(async () => {
+    const res = await api.get('/admin/disputes');
+    if (res.ok) setDisputes(res.data);
+  }, []);
+
+  const resolveDispute = useCallback(async (id, { type, amount, note }) => {
+    if (!note) return { ok: false, error: 'A reasoning note is required.' };
+    const res = await api.post(`/admin/disputes/${id}/resolve`, { type, amount, note });
+    if (!res.ok) return { ok: false, error: res.error.message };
+    setDisputes((ds) => ds.map((d) => (d.id === id ? { ...d, ...res.data } : d)));
     return { ok: true };
-  }, [disputes, reverseVendorLedger, logAction]);
+  }, []);
 
-  // --- Payout batch (§3 — two-step approval enforced by identity) -----------
-  const prepareBatch = useCallback((candidateIds, preparerName) => {
-    if (!preparerName) return { ok: false, error: 'Name the preparer.' };
-    const excluded = candidateIds.filter((cid) => payoutCandidates.find((c) => c.id === cid)?.hasOpenDispute);
-    if (excluded.length) return { ok: false, error: 'A payee with an open dispute can\'t be included in a batch.' };
-    setBatch({ status: 'prepared', candidateIds, preparedBy: preparerName, approvedBy: null, preparedAt: Date.now(), approvedAt: null });
-    logAction({ actor: preparerName, action: `Payout batch prepared — ${candidateIds.length} payee(s)`, target: 'Payout batch', category: 'money', tone: 'success' });
+  // --- payout batch (§3 — two-step approval enforced by real identity) -----
+  const fetchPayoutCandidates = useCallback(async () => {
+    const res = await api.get('/admin/payout-batches/candidates');
+    if (res.ok) setPayoutCandidates(res.data.map((c) => ({ ...c, id: c.party })));
+  }, []);
+
+  // `candidateIds` are the selected groups' `id`s (party names, see
+  // fetchPayoutCandidates above) — flattened to the real ledger row ids the
+  // server actually expects.
+  const prepareBatch = useCallback(async (candidateIds) => {
+    const rows = payoutCandidates.filter((c) => candidateIds.includes(c.id));
+    if (!rows.length) return { ok: false, error: 'Select at least one payee.' };
+    if (rows.some((r) => r.hasOpenDispute)) return { ok: false, error: "A payee with an open dispute can't be included in a batch." };
+    const ledgerRowIds = rows.flatMap((r) => r.ledgerRowIds);
+    const res = await api.post('/admin/payout-batches', { ledgerRowIds });
+    if (!res.ok) return { ok: false, error: res.error.message };
+    setBatch(res.data);
     return { ok: true };
-  }, [payoutCandidates, logAction]);
+  }, [payoutCandidates]);
 
-  const approveBatch = useCallback((approverName) => {
+  const approveBatch = useCallback(async () => {
     if (batch.status !== 'prepared') return { ok: false, error: 'No prepared batch to approve.' };
-    if (!approverName) return { ok: false, error: 'Name the approver.' };
-    if (approverName.trim().toLowerCase() === (batch.preparedBy || '').trim().toLowerCase()) {
-      logAction({ actor: approverName, action: 'Payout batch approval refused — same identity as preparer', target: 'Payout batch', category: 'money', tone: 'danger', refused: true });
-      return { ok: false, error: `${approverName} also prepared this batch — a second, different approver is required.` };
-    }
-    setBatch((b) => ({ ...b, status: 'approved', approvedBy: approverName, approvedAt: Date.now() }));
-    logAction({ actor: approverName, action: 'Payout batch approved and released', target: 'Payout batch', category: 'money', tone: 'success' });
+    const res = await api.post(`/admin/payout-batches/${batch.id}/approve`);
+    if (!res.ok) return { ok: false, error: res.error.message };
+    setBatch(res.data);
     return { ok: true };
-  }, [batch, logAction]);
+  }, [batch]);
 
   const resetBatch = useCallback(
-    () => setBatch({ status: 'draft', candidateIds: [], preparedBy: null, approvedBy: null, preparedAt: null, approvedAt: null }),
+    () => setBatch({ status: 'draft', totalAmount: 0, preparedBy: null, approvedBy: null, preparedAt: null, approvedAt: null }),
     [],
   );
 
-  // --- Policy config (§3 Policy object) --------------------------------------
-  const savePolicy = useCallback((patch, changedSummary) => {
-    setPolicy((p) => ({ ...p, ...patch }));
-    logAction({ action: `Policy changed — ${changedSummary}`, target: 'Policy config', category: 'money', tone: 'warning' });
-  }, [logAction]);
+  // --- audit (§3 — one shared, append-only log; every mutation above writes
+  // to it server-side, never a second client-local copy) --------------------
+  const fetchAudit = useCallback(async (filter = 'all') => {
+    const res = await api.get(`/admin/audit?filter=${filter}`);
+    if (res.ok) setAudit(res.data);
+  }, []);
 
   const value = useMemo(() => ({
-    adminRole, setAdminRole,
-    policy, savePolicy,
+    adminRole,
+    policy, fetchConfig, savePolicy,
     kycQueue, approveKyc, rejectKyc, fetchKycQueue, reviewKycDocument,
-    fraudQueue, clearFraud, refundFraud, askForId,
-    disputes, resolveDispute,
-    payoutCandidates, batch, prepareBatch, approveBatch, resetBatch,
-    audit, logAction,
+    ledger, fetchLedger, reverseLedgerRow,
+    fraudQueue, fetchFraud, clearFraud, refundFraud, askForId,
+    disputes, fetchDisputes, resolveDispute,
+    payoutCandidates, fetchPayoutCandidates, batch, prepareBatch, approveBatch, resetBatch,
+    audit, fetchAudit,
   }), [
-    adminRole, policy, savePolicy,
+    adminRole,
+    policy, fetchConfig, savePolicy,
     kycQueue, approveKyc, rejectKyc, fetchKycQueue, reviewKycDocument,
-    fraudQueue, clearFraud, refundFraud, askForId,
-    disputes, resolveDispute,
-    payoutCandidates, batch, prepareBatch, approveBatch, resetBatch,
-    audit, logAction,
+    ledger, fetchLedger, reverseLedgerRow,
+    fraudQueue, fetchFraud, clearFraud, refundFraud, askForId,
+    disputes, fetchDisputes, resolveDispute,
+    payoutCandidates, fetchPayoutCandidates, batch, prepareBatch, approveBatch, resetBatch,
+    audit, fetchAudit,
   ]);
 
   return <AdminContext.Provider value={value}>{children}</AdminContext.Provider>;

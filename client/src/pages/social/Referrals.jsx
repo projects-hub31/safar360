@@ -1,6 +1,7 @@
 import { useApp } from '../../context/app/useApp';
+import { useAdmin } from '../../context/admin/useAdmin';
 import { AUTHORS, DEMO_INFLUENCER_ID, INFLUENCER_PLATFORM_FEE_PCT } from '../../context/social/social-context';
-import { PLATFORM_LEDGER_EXTRA, DEFAULT_POLICY } from '../../context/admin/admin-context';
+import { PLATFORM_LEDGER_EXTRA } from '../../context/admin/admin-context';
 import { DataTable, StatusPill, Card } from '../../components/ui';
 
 const TONE = { accruing: 'neutral', accrued: 'info', pending: 'warning', released: 'success', 'held·dispute': 'held', reversed: 'danger' };
@@ -12,6 +13,7 @@ const TONE = { accruing: 'neutral', accrued: 'info', pending: 'warning', release
 // PLATFORM_LEDGER_EXTRA rather than a second, separate seed array.
 export default function Referrals() {
   const { formatMoney } = useApp();
+  const { policy } = useAdmin();
   const me = AUTHORS[DEMO_INFLUENCER_ID];
 
   const rows = PLATFORM_LEDGER_EXTRA.filter((r) => r.kind === 'referral' && r.party === me.name);
@@ -38,7 +40,7 @@ export default function Referrals() {
     <div className="mx-auto flex max-w-[1000px] flex-col gap-4">
       <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">Referrals</h1>
       <p className="text-xs leading-relaxed text-fg-subtle">
-        Last-click attribution, a {DEFAULT_POLICY.attributionDays}-day window. Conversions only count once a booking is
+        Last-click attribution, a {policy?.attributionDays ?? 30}-day window. Conversions only count once a booking is
         actually captured — a failed payment leaves no commission behind. Paid on trip completion, not on booking.
       </p>
 

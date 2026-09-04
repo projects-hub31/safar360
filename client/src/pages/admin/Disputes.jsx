@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAdmin } from '../../context/admin/useAdmin';
 import { useApp } from '../../context/app/useApp';
 import PermGate from '../../components/admin/PermGate';
@@ -16,15 +16,17 @@ function fmtAt(at) {
 }
 
 export default function Disputes() {
-  const { disputes, resolveDispute } = useAdmin();
+  const { disputes, fetchDisputes, resolveDispute } = useAdmin();
   const { formatMoney } = useApp();
   const [note, setNote] = useState({});
   const [splitAmount, setSplitAmount] = useState({});
   const [error, setError] = useState({});
 
-  const onResolve = (d, type) => {
+  useEffect(() => { fetchDisputes(); }, [fetchDisputes]);
+
+  const onResolve = async (d, type) => {
     const amount = type === 'split' ? Number(splitAmount[d.id] || 0) : (type === 'refund' ? d.amount : 0);
-    const res = resolveDispute(d.id, { type, amount, note: note[d.id] || '' });
+    const res = await resolveDispute(d.id, { type, amount, note: note[d.id] || '' });
     setError((e) => ({ ...e, [d.id]: res.ok ? null : res.error }));
   };
 
@@ -49,8 +51,8 @@ export default function Disputes() {
                 <p className="text-sm text-fg-muted">{d.travellerClaim}</p>
               </div>
               <div className="flex flex-col gap-1 rounded-lg border border-border-strong bg-raised p-3">
-                <span className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">Operator — {d.operator}</span>
-                <p className="text-sm text-fg-muted">{d.operatorClaim}</p>
+                <span className="text-xs font-semibold uppercase tracking-wider text-fg-subtle">Operator — {d.operator || 'Unknown'}</span>
+                <p className="text-sm text-fg-muted">{d.operatorClaim || 'No operator response recorded yet.'}</p>
               </div>
             </div>
 

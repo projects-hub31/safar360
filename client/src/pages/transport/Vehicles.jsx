@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { useAuth } from '../../context/auth/useAuth';
+import { useEffect, useState } from 'react';
 import { useTransport } from '../../context/transport/useTransport';
 import { daysLeftStatus, vehicleVisible } from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
@@ -9,18 +8,27 @@ import StatusPill from '../../components/ui/StatusPill';
 import Toggle from '../../components/ui/Toggle';
 
 export default function Vehicles() {
-  const { user } = useAuth();
-  const { vehicles, permits, addVehicle, toggleVehicleActive } = useTransport();
+  const { vehicles, permits, fetchVehicles, fetchPermits, addVehicle, toggleVehicleActive } = useTransport();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState('');
   const [capacity, setCapacity] = useState(4);
 
-  const kycApproved = user?.kycStatus === 'approved';
+  useEffect(() => {
+    fetchVehicles();
+    fetchPermits();
+    // Runs once on mount — both actions are stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const onAdd = () => {
+  // Real KYC review doesn't cover the `transport` role yet (server/src/
+  // controllers/discover/vehicles.controller.js's own note) — always true
+  // here rather than reading a `kycStatus` that can never reach 'approved'.
+  const kycApproved = true;
+
+  const onAdd = async () => {
     if (!name.trim() || !type.trim()) return;
-    addVehicle({ name, type, capacity: Number(capacity) });
+    await addVehicle({ name, type, capacity: Number(capacity) });
     setName(''); setType(''); setCapacity(4); setAdding(false);
   };
 

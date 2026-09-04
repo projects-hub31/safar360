@@ -1884,6 +1884,201 @@ flips the aggregate to `approved`, visible both in the queue and on the vendor's
 (403), confirming it's genuinely admin-only. Clean `eslint` (project-wide) and `vite
 build` throughout.
 
+**Module 05 (transport & property) backend, full pass — 2026-09-05.** The parallel
+Dev-B track §9 always intended to run alongside vendor (04) — untouched until now, all
+mock. New models: `Vehicle`, `Permit` (a real `expiresAt` date, `daysLeft` computed live
+at read time — never a decaying stored counter), `Route` (pricing sheet, no inventory
+field on purpose), `Room`/`RoomBooking` (the one inventory in this module that takes real
+payment), `MenuItem`, `Lead` (the shared shape for transport quotes and property table/
+group enquiries, §3). Mounted at `/api/transport/*`, gated per-route by
+`requireRole('transport')`/`requireRole('property')`/both for the shared lead endpoints,
+with the traveller-facing actions (`create`/`accept` a lead, `book`/`cancel` a room)
+mounted ungated ahead of those checks — same shape vendor's KYC-review route already
+established. Two new public endpoints, `GET /api/discover/vehicles` and
+`GET /api/discover/rooms`, exist for the same reason booking's own `GET /discover/tours`
+does: a traveller enquiring or booking needs a real id to act against, and neither
+`Transport.jsx` nor `PropertyDetail.jsx` browse a real multi-owner catalog (both still
+show one arbitrary single entity, same simplification as `TourDetail`'s own slug bridge) —
+`discover/rooms` also returns that owner's real id, since a table/group enquiry has no
+vehicle-like subject to resolve one from server-side the way a transport lead does.
+Room booking reuses the exact same deterministic decision function the real booking
+webhook already uses (`payment-gateway.mock.js`'s `decideOutcome`, newly exported) without
+the pending/async webhook step — one call, no soft-lock, matching §8 module 05's own note
+that nothing in the source spec documents a hold requirement for a room the way it does a
+tour seat. The lead lifecycle's one lazy-settle case (`quoted → expired` once the quote's
+own expiry passes unaccepted) follows the same "check on read, no cron infra" shape as
+booking's `settleIfLapsed`; `request`-status leads have no auto-transition at all — §3's
+lifecycle diagram doesn't define one, the 24h clock there is display-only.
+A real, structural gap surfaced and was deliberately not routed around: real KYC review
+only covers `operator` (kyc.service.js's own scope), so a real `transport`/`property`
+account's `kycStatus` can never leave `'none'` — enforcing CLAUDE.md §3's literal
+visibility formula (`... AND owner.kyc === 'approved'`) would make every real vehicle
+permanently invisible in discover and every real property permanently "unverified" for no
+reason tied to anything actually gated. `discover/vehicles.controller.js` drops that
+clause (active + valid-permit-if-needed only) with a comment explaining why; the client's
+`Vehicles.jsx`/`Property.jsx` pass `kycApproved`/`kycApproved`-equivalent as `true`
+unconditionally now, rather than reading a `kycStatus` that structurally can't help them.
+Also fixed while wiring, not left as a known gap: adding a permit and linking it to a
+vehicle now actually flips that vehicle's `needsPermit`/`permitId` — the client mock never
+wired this connection at all (`Vehicles.jsx` had no way to set `needsPermit`, and the old
+`addPermit` never touched it either), so the permit gate had only ever been exercised by
+seed data, never a real add-permit action.
+Client: `TransportContext.jsx` calls the real endpoints throughout — `vehicles`/`rooms`
+are shared slots between the owner's own CRUD fetch and the public discover fetch (only
+one is ever active per screen, the same single-demo-account pattern every other module
+uses); `featured`/`buyFeatured` stay local-only mock, since CLAUDE.md §9's days 8-9 scope
+never covered it. The old fake "Preview · no traveller review screen built yet" panels on
+`Quote.jsx`/`Enquiries.jsx` are removed — the real traveller-facing accept flow
+(`discover/enquiries`) already existed before this pass and those panels' own label was
+already stale; faking an outcome locally would now visibly diverge from real server state
+on the next fetch, the same reasoning that removed KYC's own fake preview buttons.
+Countdown displays across `Quotes.jsx`/`Quote.jsx`/`Enquiries.jsx` (both owner and
+traveller-facing) now read real remaining time from the lead's actual `deadlineAt`/
+`quote.expiresAt` instead of always showing a fresh full window.
+A real bug was caught during client-contract verification, not left for later: both
+`leads.controller.js`'s `create()` and `rooms.controller.js`'s `book()` read
+`req.user.name` for the traveller's display name — but `requireAuth` only ever attaches
+`{id, role, adminRole}` from the JWT (the token deliberately doesn't embed a display
+name), so every lead's `name` and every room booking's `guestName` silently fell back to
+the literal string `"Traveller"` regardless of who was actually signed in. Fixed by
+looking up the real `User` document, the same pattern `listings.controller.js`'s
+`createDraft` already used correctly for a vendor's `operator` display name — this file's
+two spots just hadn't followed it.
+Verified genuinely: a 51-assertion `mongodb-memory-server` run (same throwaway-dependency
+method as every prior pass) covering vehicle/permit creation and the real needsPermit
+link, discover visibility flipping on permit expiry/renewal/vehicle-pause, route
+validation, full room CRUD plus a real traveller booking (deterministic decline/hold/
+confirm, the atomic sold-out check, cancellation restoring the floor), menu toggling, and
+the complete lead lifecycle for both a transport quote (ownership-scoped inbox, a
+non-owner and a traveller both correctly blocked from deciding it, quote → accept) and a
+property table/group enquiry (decline, quote → lazy-expire → accept correctly refused) —
+plus a second, 17-assertion pass verifying the exact client contract (PATCH support,
+booking with no `guestName` sent, discover DTO shapes) that caught the `req.user.name`
+bug above. Clean `eslint` (project-wide) and `vite build` throughout.
+**Not built**: `Featured.jsx`/featured placement (deliberately out of scope, per the note
+above); real KYC coverage for `transport`/`property` (module 05's own future backend
+item, not something to retrofit here); `AdminContext`'s `policy` (read by `Money.jsx` for
+the platform commission rate) is still local-only mock, unconnected to the real
+`GET /api/admin/config` — a pre-existing, separate gap in admin module 09, not something
+this pass touched (closed below).
+
+**Module 09 (admin) backend, full pass — 2026-09-05.** RBAC: `middleware/
+requireAdminPerm.js` mirrors §3's exact matrix server-side (`kyc`/`moderation` →
+super|sub, `finance`/`disputes`/`fraud`/`audit` → super|finance, `config` → super only) —
+a denied route 403s, matching the client's own "absence, never disabled" law rather than
+just leaving it as a UI convention. Admin can't self-register (no phone/OTP flow makes
+sense for a fixed sub-role), so `POST /identity/auth/dev-admin-signin` (`auth.controller.
+js`) is the sanctioned exception: one fixed, auto-created test account per sub-role
+(`super`/`sub`/`finance`), refused outright in production — the same "dev-only, clearly
+labeled, never a real capability" shape as the OTP bypass code and `quickSignIn`.
+New models: `AuditLog` (`actorId`/`actorName`/`action`/`target`/`category`/`tone`/
+`refused`), `PayoutBatch` (`status: prepared|approved`, real `preparedBy`/`approvedBy`
+`User` refs plus display-name snapshots — a JWT only ever carries `{id, role,
+adminRole}`, never a name, so every admin controller resolves a real name via
+`audit.service.js`'s new `actorNameFor()` rather than trusting `req.user.name`, which
+doesn't exist), `Dispute` (`travellerClaim`/`operatorClaim`/`resolution`, all display
+names snapshotted the same way). `Payment` gained one field, `fraudAskedForId` — fraud
+review's three resolutions (§3: "the model does not decide... a person decides") are
+modeled as ordinary state transitions plus this one flag, not a parallel fraud-specific
+enum: Clear runs the *exact* real capture path (`webhook.service.js`'s `confirmed`
+branch was extracted into an exported `capturePayment(payment, booking)` so the fraud
+controller and the webhook call the identical function — atomic seat check included, so
+clearing a held payment can still legitimately resolve to sold-out), Refund marks the
+payment failed and calls the one shared `reverseLedger`, Ask-for-ID only sets the new
+flag. `ledger.service.js` gained `settleAccruingRows()` — the missing accruing→pending
+transition (nothing previously moved a row off `accruing` at all): a booking's row
+settles once its own `departureDate` has passed, the same
+"check on read, no cron infra" shape as every other lazy timer in this app, called at the
+top of every ledger/payout-batch read so a stale `accruing` row is never shown as
+payable.
+Controllers, all under `routes/admin/index.js` (config is a public `GET`, `POST
+/disputes` is traveller-facing and mounted ahead of the blanket `requireRole('admin')`
+gate, same shape the KYC-review route already established): `config.controller.js`
+gained `updateConfig` (super-only, relies on `Policy`'s existing schema `min`/`max` for
+range validation rather than re-implementing it); `ledger.controller.js` (`getLedger` —
+the real, unscoped, platform-wide view every vendor's own real commission row now feeds
+into; `reverseRow` — admin can reverse any party's row, unlike the vendor's own
+self-scoped reverse); `fraud.controller.js` (the three resolutions above, `list()`
+returning every payment that ever scored above 0 so resolved rows keep their history
+visible); `disputes.controller.js` (`create()` — one open dispute per booking at a time,
+only on the traveller's own confirmed/cancelled booking; `buildTimeline()` — a real
+cross-module read, not a dispute-owned copy: only "Payment captured" has a real source in
+this codebase, so geofence check-in/weather alert/operator-completion honestly read
+`at: null` rather than fabricating a plausible-looking timestamp; `resolve()` — a
+mandatory note gates all three actions, only `refund` actually restores the seat and
+reverses the ledger row, `split`/`release` record the decision without touching
+inventory, the same acknowledged simplification `VendorContext`'s ledger shape already
+carries); `payoutBatches.controller.js` (`candidates()` groups every `pending` row by
+party and excludes anyone with an open dispute; `prepare()`/`approve()` — the two-step
+check compares real authenticated user ids, not a typed name string, so the same person
+genuinely cannot approve their own batch even holding a role that would otherwise allow
+it); `audit.controller.js` (`?filter=all|refused|money|moderation|kyc`).
+**Real bug caught before verification, not after**: `disputes.controller.js`'s
+`resolve()` had two `const actorName` declarations in the same function once
+`decidedByName` was added — a genuine `SyntaxError` waiting to happen, caught on review
+and fixed by computing it once and reusing it for both the resolution snapshot and the
+audit-log call.
+Client: `AdminContext.jsx` fully rewritten onto the real endpoints — `policy` starts
+`null` and loads from the public config GET on mount (closing the gap the module 05
+entry above flagged: `transport/Money.jsx` and `social/Referrals.jsx` now read the same
+live value instead of a local mock default); `kycQueue` and `ledger` both keep merging
+real rows over the **permanent** seeded rows (`KYC_QUEUE`'s transport/property/seller
+rows, `PLATFORM_LEDGER_EXTRA`'s referral rows) for exactly the reasons the module 04/05
+entries already established — no real backend exists yet for non-operator KYC or for
+referrals. `data/admin/admin.js` trimmed to just those two permanent seeds plus
+`KYC_REJECT_REASONS`/`POLICY_FIELDS`; `FRAUD_QUEUE`, `DISPUTES`, `PAYOUT_CANDIDATES`,
+`ADMIN_ROSTER`, `DEFAULT_POLICY`, `AUDIT_SEED`, and the local `fraudScore()` helper are
+all deleted outright now that the server computes and returns real scores/factors
+directly. All 7 dependent admin pages (Fraud, Ledger, Disputes, PayoutBatch, Config,
+Audit, Console) updated to fetch on mount and call the real actions; `PayoutBatch.jsx`
+lost its preparer/approver name `TextField`s entirely — identity is now the real signed-
+in admin, not a typed string a demo has to fake matching/mismatching. `AppShell.jsx`'s
+"Sub-role" selector now calls a new `AuthContext.switchAdminRole()` (re-authenticates as
+that sub-role's own fixed dev account — a real round trip, same async/error-state
+pattern `onSwitchRole` already used) instead of a local `setAdminRole` that no longer
+exists.
+One real React lint bug surfaced while wiring `Config.jsx`: syncing a local `draft` copy
+of `policy` (which starts `null`) via a `useEffect` that calls `setDraft` tripped
+`react-hooks/set-state-in-effect` — fixed per §7's own stated preference (force a
+remount over an effect that watches a prop and calls `setState`) by splitting the page
+into an outer `Config` that returns `null` until `policy` is real and an inner
+`ConfigForm` that only ever mounts once it is, so `useState(policy)` is correct on its
+very first render with nothing to watch-and-sync afterward.
+Verified genuinely (not just lint/build): a 44-assertion `mongodb-memory-server` run
+(same throwaway-dependency method as every prior pass, removed after) driving the exact
+HTTP shapes `AdminContext.jsx` calls — RBAC (sub-admin 403s on fraud/audit, finance-admin
+403s on config PATCH); a fraud-held payment carries a real 5-factor weighted breakdown;
+Ask-for-ID leaves it held, Refund resolves it to refunded and the underlying booking
+reads back failed, Clear resolves a *second* held payment through the real capture path
+to a genuinely confirmed booking with a real seat deducted; resolving an already-resolved
+fraud row 409s; a traveller files a dispute on their own confirmed booking (a second open
+dispute on the same booking 409s), the listed dispute carries a real timeline with
+payment-capture genuinely timestamped and the three unbuilt events honestly `null`;
+resolving without a note 400s, a full-refund resolution cancels the booking, restores the
+seat, and reverses its ledger row, re-resolving 409s; a fresh commission row starts
+`accruing`, backdating its booking's `departureDate` directly in Mongo (the same "move
+the clock forward" seam every lazy-settle test in this app has needed) flips it to
+`pending` on the next ledger read; a finance-admin prepares a payout batch from that row,
+the *same* finance-admin's own approval attempt 409s, a *different* admin (super)
+approves it and the row releases; a direct ledger-row reverse works independently; an
+out-of-range config PATCH is rejected by schema validation; and the audit log shows real
+entries including the refused same-identity approval attempt, correctly filtered by
+`?filter=money`. All 44 passed on the first clean run after the fixes above. Clean
+`eslint` (project-wide) and `vite build` throughout.
+**Not built**: admin `Moderation.jsx` and `Analytics.jsx` are unchanged by this pass —
+Moderation was already reading `SocialContext`'s real posts/reports directly (no
+separate `/admin/moderation` backend needed, since that data already lives server-side
+once module 07 gets its own backend pass — not yet started); Analytics' monthly
+series/funnel stay seeded, same honest framing as vendor `Analytics.jsx`, since no
+real multi-month platform history exists to derive one from. Real per-account identity
+for KYC/ledger diversity is still limited to whatever vendors/travellers this
+environment's own manual/scripted testing has actually created — there is no seed script
+populating a rich multi-vendor admin demo dataset, unlike the client-only phase's
+seeded rows. No in-browser click-through was performed this pass (Chrome extension not
+used this session) — a future session should still visually confirm Ledger/PayoutBatch/
+Console/Config render correctly against a freshly-registered admin and at least one real
+vendor booking, the way modules 04/05's own entries were confirmed in-browser.
+
 ---
 
 ## 10. Open questions inherited from the wireframe spec

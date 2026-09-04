@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useAuth } from '../../context/auth/useAuth';
 import { useTransport } from '../../context/transport/useTransport';
 import Card from '../../components/ui/Card';
@@ -6,9 +7,21 @@ import StatusPill from '../../components/ui/StatusPill';
 
 export default function Property() {
   const { user } = useAuth();
-  const { rooms, menu, leads } = useTransport();
+  const { rooms, menu, leads, fetchRooms, fetchMenu, fetchLeadsInbox } = useTransport();
 
-  const kycApproved = user?.kycStatus === 'approved';
+  useEffect(() => {
+    fetchRooms();
+    fetchMenu();
+    fetchLeadsInbox();
+    // Runs once on mount — all three actions are stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Real KYC review doesn't cover the `property` role yet, and room booking
+  // itself isn't actually gated on it either (server/src/controllers/
+  // transport/rooms.controller.js's book() has no such check) — showing a
+  // permanently-pending banner here would claim a block that doesn't exist.
+  const kycApproved = true;
   const openTables = leads.filter((l) => l.kind === 'table' || l.kind === 'group').filter((l) => l.status === 'request').length;
   const roomsBooked = rooms.reduce((n, r) => n + r.booked, 0);
   const roomsTotal = rooms.reduce((n, r) => n + r.total, 0);

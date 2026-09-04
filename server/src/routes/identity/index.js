@@ -13,6 +13,7 @@ router.post("/auth/otp/resend", authController.resendOtp);
 router.post("/auth/refresh", authController.refresh);
 router.post("/auth/logout", authController.logout);
 router.get("/auth/me", requireAuth, authController.me);
+router.post("/auth/dev-admin-signin", authController.devAdminSignIn);
 
 router.post("/password/forgot", passwordController.forgotPassword);
 router.post("/password/reset", passwordController.resetPassword);

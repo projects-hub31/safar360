@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/app/useApp';
 import { useBooking } from '../../context/booking/useBooking';
@@ -89,10 +89,21 @@ export default function Home() {
   const navigate = useNavigate();
   const { formatMoney } = useApp();
   const { avail } = useBooking();
-  const { leads, rooms } = useTransport();
+  const { leads, rooms, fetchDiscoverRooms } = useTransport();
   const [where, setWhere] = useState('');
   const [when, setWhen] = useState('2026-08-14');
   const [guests, setGuests] = useState(2);
+
+  // `roomsLive` is real (the public discover feed); `openQuotes` has no
+  // public real source yet — leads are owner/traveller-scoped only, no
+  // platform-wide "quotes open" endpoint exists — so it honestly reads 0
+  // unless a real quote happens to already be loaded in this session,
+  // rather than a fake seeded number.
+  useEffect(() => {
+    fetchDiscoverRooms();
+    // Runs once on mount — fetchDiscoverRooms is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const doSearch = () => navigate('/discover/search', { state: { where } });
 

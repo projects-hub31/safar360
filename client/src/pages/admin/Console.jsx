@@ -1,9 +1,9 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAdmin } from '../../context/admin/useAdmin';
-import { useVendor } from '../../context/vendor/useVendor';
 import { useSocial } from '../../context/social/useSocial';
 import { useApp } from '../../context/app/useApp';
-import { perms, fraudScore, PLATFORM_LEDGER_EXTRA } from '../../context/admin/admin-context';
+import { perms } from '../../context/admin/admin-context';
 import { Card, KpiCard, StatusPill } from '../../components/ui';
 
 const TILES = [
@@ -19,19 +19,26 @@ const TILES = [
 ];
 
 export default function Console() {
-  const { adminRole, kycQueue, fraudQueue, disputes, policy } = useAdmin();
-  const { ledger } = useVendor();
+  const { adminRole, policy, kycQueue, fetchKycQueue, fraudQueue, fetchFraud, disputes, fetchDisputes, ledger, fetchLedger } = useAdmin();
   const { posts } = useSocial();
   const { formatMoney } = useApp();
   const p = perms(adminRole);
+
+  useEffect(() => {
+    if (p.kyc) fetchKycQueue();
+    if (p.fraud) fetchFraud();
+    if (p.disputes) fetchDisputes();
+    if (p.finance) fetchLedger();
+    // Runs once on mount and whenever the acting sub-role changes what's visible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminRole]);
 
   const pendingKyc = kycQueue.filter((r) => r.status === 'pending').length;
   const underReview = posts.filter((post) => post.moderation === 'under_review').length;
   const held = fraudQueue.filter((r) => r.status === 'held' || r.status === 'ask-id').length;
   const openDisputes = disputes.filter((d) => d.status === 'open').length;
-  const pendingNet = ledger.filter((r) => r.state === 'pending').reduce((n, r) => n + r.net, 0)
-    + PLATFORM_LEDGER_EXTRA.filter((r) => r.state === 'pending').reduce((n, r) => n + r.net, 0);
-  const heldDisputeCount = fraudQueue.filter((r) => fraudScore(r) >= policy.fraudThreshold && r.status === 'held').length;
+  const pendingNet = ledger.filter((r) => r.state === 'pending').reduce((n, r) => n + r.net, 0);
+  const heldDisputeCount = policy ? fraudQueue.filter((r) => r.score >= policy.fraudThreshold && r.status === 'held').length : 0;
 
   // KPI and module tiles both filtered live through perms() (§3 admin/console)
   // — a denied area is absent here, not disabled.

@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../../context/app/useApp';
-import { useAuth } from '../../context/auth/useAuth';
 import { useTransport } from '../../context/transport/useTransport';
 import { roomRate } from '../../context/transport/transport-context';
 import { seatPill } from '../../data/traveler/tours';
@@ -34,8 +33,17 @@ function todayPlus(days) {
 
 export default function PropertyDetail() {
   const { formatMoney } = useApp();
-  const { user } = useAuth();
-  const { createLead, rooms, bookRoom, roomBookings, cancelRoomBooking } = useTransport();
+  const {
+    createLead, rooms, fetchDiscoverRooms, discoverPropertyOwnerId,
+    bookRoom, roomBookings, fetchMyRoomBookings, cancelRoomBooking,
+  } = useTransport();
+
+  useEffect(() => {
+    fetchDiscoverRooms();
+    fetchMyRoomBookings();
+    // Runs once on mount — both actions are stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- room reservation (real payment, real availability — §6 "Rooms are
   // booked, enquiries are not") ------------------------------------------
@@ -52,8 +60,9 @@ export default function PropertyDetail() {
   const [processing, setProcessing] = useState(false);
   const [roomResult, setRoomResult] = useState(null); // { roomId, kind, ref, reason }
 
-  const guestName = user?.name || 'Traveller';
-  const myReservations = roomBookings.filter((b) => b.guestName === guestName);
+  // roomBookings is already traveller-scoped by the real endpoint
+  // (GET /transport/room-bookings/mine) — no local guestName matching needed.
+  const myReservations = roomBookings;
 
   const openRoom = rooms.find((r) => r.id === openRoomId);
   const previewRate = openRoom ? roomRate(openRoom.nightlyRate, checkIn) : 0;
@@ -67,18 +76,16 @@ export default function PropertyDetail() {
     setRoomResult(null);
   };
 
-  const onReserve = () => {
+  const onReserve = async () => {
     if (!openRoom || !canReserve || processing) return;
     setProcessing(true);
-    setTimeout(() => {
-      const result = bookRoom({
-        roomId: openRoom.id, checkIn, nights, guests: roomGuests,
-        method, methodDetail: detail, guestName,
-      });
-      setProcessing(false);
-      setRoomResult({ roomId: openRoom.id, ...result });
-      if (result.kind === 'confirmed') setOpenRoomId(null);
-    }, 1200);
+    const result = await bookRoom({
+      roomId: openRoom.id, checkIn, nights, guests: roomGuests,
+      method, methodDetail: detail,
+    });
+    setProcessing(false);
+    setRoomResult({ roomId: openRoom.id, ...result });
+    if (result.kind === 'confirmed') setOpenRoomId(null);
   };
 
   // --- table / group enquiry (lead, not a booking — §6) -------------------
@@ -89,13 +96,12 @@ export default function PropertyDetail() {
   const [note, setNote] = useState('');
   const [sentId, setSentId] = useState(null);
 
-  const onSendEnquiry = () => {
-    if (!date) return;
-    const id = createLead({
+  const onSendEnquiry = async () => {
+    if (!date || !discoverPropertyOwnerId) return;
+    const id = await createLead({
       kind,
-      subjectId: null,
+      ownerId: discoverPropertyOwnerId,
       subjectLabel: kind === 'table' ? 'Dinner table enquiry' : 'Group event enquiry',
-      name: guestName,
       date,
       count: guests,
       note,

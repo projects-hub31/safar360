@@ -252,4 +252,48 @@ async function me(req, res, next) {
   }
 }
 
-module.exports = { register, login, verifyOtp, resendOtp, refresh, logout, me };
+const ADMIN_SUB_ROLES = ["super", "sub", "finance"];
+// One fixed real test account per admin sub-role — the same "deterministic
+// identity, reused across calls" shape as AuthContext.jsx's own
+// QUICK_TEST_PHONE map for the 6 self-registerable roles. Admin can't
+// self-register at all (§4 — a real admin account is seeded server-side),
+// so quickSignIn/switchRole/the header's "Sub-role" switcher all call this
+// instead of the real register+OTP flow those roles use.
+const DEV_ADMIN_PHONE = { super: "3009000091", sub: "3009000092", finance: "3009000093" };
+
+// POST /api/identity/auth/dev-admin-signin — a dev-only testing lever, same
+// honestly-labeled spirit as the OTP dev-bypass code: never presented as a
+// real capability, and refused outright once NODE_ENV is production, since
+// unlike a real account it has no password of its own a real person set.
+async function devAdminSignIn(req, res, next) {
+  try {
+    if (env.nodeEnv === "production") {
+      throw new ApiError(403, "FORBIDDEN", "Not available in production.");
+    }
+    const { adminRole } = req.body;
+    if (!ADMIN_SUB_ROLES.includes(adminRole)) {
+      throw new ApiError(400, "INVALID_ADMIN_ROLE", "adminRole must be 'super', 'sub' or 'finance'.");
+    }
+
+    const phone = DEV_ADMIN_PHONE[adminRole];
+    let user = await User.findOne({ phone, role: "admin" });
+    if (!user) {
+      user = await User.create({
+        role: "admin", adminRole, name: `Test Admin (${adminRole})`, phone,
+        passwordHash: await bcrypt.hash(`dev-admin-${adminRole}`, 10), verified: true,
+      });
+    }
+
+    const { accessToken, refreshToken } = await sessionService.issueSession(user);
+    res.cookie("s360_rt", refreshToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    ok(res, { user: user.toSafeJSON(), accessToken, refreshToken });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { register, login, verifyOtp, resendOtp, refresh, logout, me, devAdminSignIn };

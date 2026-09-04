@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTransport } from '../../context/transport/useTransport';
 import { daysLeftStatus, PERMIT_WARNING_DAYS } from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
@@ -9,16 +9,23 @@ import StatusPill from '../../components/ui/StatusPill';
 import EmptyState from '../../components/ui/EmptyState';
 
 export default function Permits() {
-  const { vehicles, permits, addPermit, renewPermit } = useTransport();
+  const { vehicles, permits, fetchVehicles, fetchPermits, addPermit, renewPermit } = useTransport();
   const [adding, setAdding] = useState(false);
   const [vehicleId, setVehicleId] = useState(vehicles[0]?.id || '');
   const [number, setNumber] = useState('');
   const [region, setRegion] = useState('Gilgit-Baltistan');
   const [daysLeft, setDaysLeft] = useState(365);
 
-  const onAdd = () => {
+  useEffect(() => {
+    fetchVehicles();
+    fetchPermits();
+    // Runs once on mount — both actions are stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onAdd = async () => {
     if (!vehicleId || !number.trim()) return;
-    addPermit({ vehicleId, number, region, daysLeft: Number(daysLeft) });
+    await addPermit({ vehicleId, number, region, daysLeft: Number(daysLeft) });
     setNumber(''); setAdding(false);
   };
 

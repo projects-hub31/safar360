@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../../context/app/useApp';
 import { useTransport } from '../../context/transport/useTransport';
-import { LEAD_WINDOW_HOURS } from '../../context/transport/transport-context';
 import Card from '../../components/ui/Card';
 import StatusPill from '../../components/ui/StatusPill';
 import EmptyState from '../../components/ui/EmptyState';
@@ -15,10 +14,22 @@ const TABS = [
 ];
 const PILL = { request: 'warning', quoted: 'info', declined: 'danger', accepted: 'success', expired: 'neutral', withdrawn: 'neutral' };
 
+// Real remaining time to the lead's actual deadline, not always a fresh 24h
+// (§6 quotes inbox — the clock is real, ownership-scoped server state now).
+function remainingSeconds(deadlineAt) {
+  return Math.max(0, Math.round((deadlineAt - Date.now()) / 1000));
+}
+
 export default function Quotes() {
   const { formatMoney } = useApp();
-  const { leads } = useTransport();
+  const { leads, fetchLeadsInbox } = useTransport();
   const [tab, setTab] = useState('request');
+
+  useEffect(() => {
+    fetchLeadsInbox();
+    // Runs once on mount — fetchLeadsInbox is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const transportLeads = leads.filter((l) => l.kind === 'transport');
   const rows = transportLeads.filter((l) => l.status === tab).slice().reverse();
@@ -58,7 +69,7 @@ export default function Quotes() {
                 <StatusPill tone={PILL[l.status] || 'neutral'}>{l.status}</StatusPill>
                 {l.status === 'request' && (
                   <span className="flex items-center gap-1.5 rounded-md border border-warning bg-warning-soft px-2 py-1 text-[11px] font-semibold text-warning-text">
-                    Reply within <Countdown seconds={LEAD_WINDOW_HOURS * 3600} urgentAt={21600} />
+                    Reply within <Countdown key={l.id} seconds={remainingSeconds(l.deadlineAt)} urgentAt={21600} />
                   </span>
                 )}
               </Card>

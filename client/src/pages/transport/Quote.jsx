@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/app/useApp';
 import { useTransport } from '../../context/transport/useTransport';
@@ -14,11 +14,21 @@ import EmptyState from '../../components/ui/EmptyState';
 const PRESET_LABELS = ['Vehicle fare', 'Permit fee', 'Fuel surcharge', 'Driver overnight'];
 const PILL = { request: 'warning', quoted: 'info', declined: 'danger', accepted: 'success', expired: 'neutral', withdrawn: 'neutral' };
 
+function remainingSeconds(deadlineAt) {
+  return Math.max(0, Math.round((deadlineAt - Date.now()) / 1000));
+}
+
 export default function Quote() {
   const location = useLocation();
   const navigate = useNavigate();
   const { formatMoney } = useApp();
-  const { leads, sendQuote, declineLead, withdrawQuote, previewLeadOutcome } = useTransport();
+  const { leads, fetchLeadsInbox, sendQuote, declineLead, withdrawQuote } = useTransport();
+
+  useEffect(() => {
+    fetchLeadsInbox(); // covers a direct navigation/reload, not just arriving from Quotes.jsx
+    // Runs once on mount — fetchLeadsInbox is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const lead = leads.find((l) => l.id === location.state?.leadId);
 
@@ -36,14 +46,14 @@ export default function Quote() {
   const addItem = () => setLineItems((rows) => rows.concat({ label: '', amount: '' }));
   const removeItem = (i) => setLineItems((rows) => rows.filter((_, idx) => idx !== i));
 
-  const onSend = () => {
+  const onSend = async () => {
     if (!canSend) return;
-    sendQuote(lead.id, { lineItems: lineItems.filter((li) => Number(li.amount) > 0).map((li) => ({ label: li.label || 'Line item', amount: Number(li.amount) })), expiryHours });
+    await sendQuote(lead.id, { lineItems: lineItems.filter((li) => Number(li.amount) > 0).map((li) => ({ label: li.label || 'Line item', amount: Number(li.amount) })), expiryHours });
     navigate('/transport/quotes');
   };
 
-  const onDecline = () => {
-    declineLead(lead.id);
+  const onDecline = async () => {
+    await declineLead(lead.id);
     navigate('/transport/quotes');
   };
 
@@ -116,18 +126,13 @@ export default function Quote() {
           </div>
           <div className="flex items-center gap-2 text-sm">
             <span className="text-fg-muted">Expires in</span>
-            <Countdown seconds={lead.quote.expiryHours * 3600} urgentAt={3600} />
+            <Countdown key={lead.id} seconds={remainingSeconds(lead.quote.expiresAt)} urgentAt={3600} />
           </div>
           <Button variant="destructive" onClick={() => withdrawQuote(lead.id)}>Withdraw quote</Button>
-          <div className="border-t border-border pt-3">
-            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-fg-subtle">
-              Preview · no traveller review screen built yet
-            </span>
-            <div className="flex gap-2">
-              <Button size="sm" variant="secondary" onClick={() => previewLeadOutcome(lead.id, 'accepted')}>If accepted</Button>
-              <Button size="sm" variant="secondary" onClick={() => previewLeadOutcome(lead.id, 'expired')}>If expired</Button>
-            </div>
-          </div>
+          <p className="border-t border-border pt-3 text-xs leading-relaxed text-fg-subtle">
+            The traveller reviews and accepts this from their own "My enquiries" screen — nothing here decides
+            it for them.
+          </p>
         </Card>
       )}
     </div>

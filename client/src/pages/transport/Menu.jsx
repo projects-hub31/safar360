@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/app/useApp';
 import { useTransport } from '../../context/transport/useTransport';
 import Card from '../../components/ui/Card';
@@ -8,14 +8,20 @@ import Toggle from '../../components/ui/Toggle';
 
 export default function Menu() {
   const { formatMoney } = useApp();
-  const { menu, addMenuItem, toggleMenuItem } = useTransport();
+  const { menu, fetchMenu, addMenuItem, toggleMenuItem } = useTransport();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
 
-  const onAdd = () => {
+  useEffect(() => {
+    fetchMenu();
+    // Runs once on mount — fetchMenu is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onAdd = async () => {
     if (!name.trim() || !(Number(price) > 0)) return;
-    addMenuItem({ name, price: Number(price) });
+    await addMenuItem({ name, price: Number(price) });
     setName(''); setPrice(''); setAdding(false);
   };
 

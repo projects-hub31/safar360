@@ -25,13 +25,14 @@ function navLinkClasses({ isActive }) {
 // operator/transport/property/seller/influencer/admin all mount through it too.
 export default function AppShell() {
   const { theme, toggleTheme, currency, setCurrency } = useApp();
-  const { user, signOut, switchRole } = useAuth();
+  const { user, signOut, switchRole, switchAdminRole } = useAuth();
   const { cart } = useShop();
-  const { adminRole, setAdminRole } = useAdmin();
+  const { adminRole } = useAdmin();
   const navigate = useNavigate();
   const cartCount = cart.reduce((n, l) => n + l.qty, 0);
   const [switchingRole, setSwitchingRole] = useState(false);
   const [switchRoleError, setSwitchRoleError] = useState(null);
+  const [switchingAdminRole, setSwitchingAdminRole] = useState(false);
 
   // Nav is role-aware (§5 per-role default nav) — a signed-out visitor and a
   // traveller both get the traveller nav, since that's the only role with a
@@ -71,6 +72,16 @@ export default function AppShell() {
       return;
     }
     navigate(ROLES.find((r) => r.id === roleId).nav[0][1]);
+  };
+
+  // switchAdminRole re-authenticates as that sub-role's own fixed dev
+  // account (a real round trip, same reason as onSwitchRole above) — never
+  // a local relabel of the same session.
+  const onSwitchAdminRole = async (nextAdminRole) => {
+    if (switchingAdminRole) return;
+    setSwitchingAdminRole(true);
+    await switchAdminRole(nextAdminRole);
+    setSwitchingAdminRole(false);
   };
 
   return (
@@ -177,9 +188,10 @@ export default function AppShell() {
                     <span className="font-mono text-[10px] uppercase tracking-wider">Sub-role</span>
                     <select
                       value={adminRole}
-                      onChange={(e) => setAdminRole(e.target.value)}
+                      onChange={(e) => onSwitchAdminRole(e.target.value)}
+                      disabled={switchingAdminRole}
                       aria-label="Switch admin sub-role"
-                      className="min-h-[34px] cursor-pointer rounded-lg border border-border-strong bg-raised px-2 text-xs font-semibold text-fg"
+                      className="min-h-[34px] cursor-pointer rounded-lg border border-border-strong bg-raised px-2 text-xs font-semibold text-fg disabled:opacity-50"
                     >
                       {ADMIN_ROLES.map((r) => (
                         <option key={r} value={r}>{ADMIN_ROLE_LABELS[r]}</option>

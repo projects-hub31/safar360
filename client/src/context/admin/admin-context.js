@@ -3,9 +3,7 @@ import { createContext } from 'react';
 export const AdminContext = createContext(null);
 
 export {
-  KYC_REJECT_REASONS, KYC_QUEUE, FRAUD_QUEUE, fraudScore, DISPUTES,
-  PAYOUT_CANDIDATES, ADMIN_ROSTER, PLATFORM_LEDGER_EXTRA, DEFAULT_POLICY,
-  POLICY_FIELDS, AUDIT_SEED,
+  KYC_REJECT_REASONS, KYC_QUEUE, PLATFORM_LEDGER_EXTRA, POLICY_FIELDS,
 } from '../../data/admin/admin';
 
 export const ADMIN_ROLES = ['super', 'sub', 'finance'];

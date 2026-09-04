@@ -66,4 +66,4 @@ function chargeAsync({ paymentId, bookingId, amount, method, methodDetail }) {
   return { status: "pending" };
 }
 
-module.exports = { chargeAsync, DECLINE_CARD, FRAUD_CARD, FRAUD_AMOUNT_THRESHOLD };
+module.exports = { chargeAsync, decideOutcome, DECLINE_CARD, FRAUD_CARD, FRAUD_AMOUNT_THRESHOLD };

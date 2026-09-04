@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useApp } from '../../context/app/useApp';
 import { useTransport } from '../../context/transport/useTransport';
 import { useAdmin } from '../../context/admin/useAdmin';
@@ -13,8 +14,14 @@ import { Card, StatusPill, KpiCard, DataTable } from '../../components/ui';
 // been earned, not an invented multi-stage ledger.
 export default function Money() {
   const { formatMoney } = useApp();
-  const { leads } = useTransport();
+  const { leads, fetchLeadsInbox } = useTransport();
   const { policy } = useAdmin();
+
+  useEffect(() => {
+    fetchLeadsInbox();
+    // Runs once on mount — fetchLeadsInbox is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const earned = leads
     .filter((l) => l.kind === 'transport' && l.status === 'accepted' && l.quote)
