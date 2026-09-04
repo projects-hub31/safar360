@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useVendor } from '../../context/vendor/useVendor';
 import { PLANS } from '../../context/vendor/vendor-context';
@@ -24,7 +25,13 @@ const PERMS = {
 
 export default function Plans() {
   const navigate = useNavigate();
-  const { subscription } = useVendor();
+  const { subscription, fetchSubscription } = useVendor();
+
+  useEffect(() => {
+    fetchSubscription();
+    // Runs once on mount — fetchSubscription is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mx-auto flex max-w-[760px] flex-col gap-4">

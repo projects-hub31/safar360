@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useVendor } from '../../context/vendor/useVendor';
 import { useApp } from '../../context/app/useApp';
@@ -9,8 +10,14 @@ const TONE = { released: 'success', pending: 'warning', accruing: 'neutral', rev
 
 export default function PayoutDetail() {
   const location = useLocation();
-  const { ledger } = useVendor();
+  const { ledger, fetchLedger } = useVendor();
   const { formatMoney } = useApp();
+
+  useEffect(() => {
+    fetchLedger(); // in case of a direct navigation/reload — Payouts.jsx already fetches too
+    // Runs once on mount — fetchLedger is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const row = ledger.find((l) => l.id === location.state?.id);
 
@@ -25,7 +32,7 @@ export default function PayoutDetail() {
   return (
     <div className="mx-auto flex max-w-[520px] flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">{row.id}</h1>
+        <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">{row.ledgerId || row.id}</h1>
         <StatusPill tone={TONE[row.state]}>{row.state}</StatusPill>
       </div>
 

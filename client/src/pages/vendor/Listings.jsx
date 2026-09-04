@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/auth/useAuth';
 import { useVendor } from '../../context/vendor/useVendor';
@@ -39,8 +39,8 @@ function Wizard({ listing, onDone }) {
   const set = (patch) => updateListing(listing.id, patch);
   const descOk = listing.description.trim().length >= MIN_DESC;
 
-  const onPublish = () => {
-    const result = publishListing(listing.id, gateOk);
+  const onPublish = async () => {
+    const result = await publishListing(listing.id, gateOk);
     if (result.ok) onDone();
   };
 
@@ -188,11 +188,23 @@ function publishListingBlockers(listing, { kycApproved, subOk }) {
 
 export default function Listings() {
   const navigate = useNavigate();
-  const { listings, createDraftListing } = useVendor();
+  const { listings, fetchListings, fetchSubscription, createDraftListing } = useVendor();
   const { formatMoney } = useApp();
   const [editingId, setEditingId] = useState(null);
 
+  useEffect(() => {
+    fetchListings();
+    fetchSubscription(); // the Wizard below reads subscription for its live gate preview
+    // Runs once on mount — both actions are stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const editing = listings.find((l) => l.id === editingId);
+
+  const onCreateDraft = async () => {
+    const id = await createDraftListing();
+    if (id) setEditingId(id);
+  };
 
   if (editing) {
     return <Wizard listing={editing} onDone={() => setEditingId(null)} />;
@@ -202,7 +214,7 @@ export default function Listings() {
     <div className="mx-auto flex max-w-[720px] flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">My listings</h1>
-        <Button onClick={() => setEditingId(createDraftListing())}>New listing</Button>
+        <Button onClick={onCreateDraft}>New listing</Button>
       </div>
 
       {listings.length ? (
@@ -224,7 +236,7 @@ export default function Listings() {
           title="Nothing listed yet"
           body="Build your first listing — the wizard autosaves as you go, and nothing publishes until every gate is clear."
           actionLabel="New listing"
-          onAction={() => setEditingId(createDraftListing())}
+          onAction={onCreateDraft}
         />
       )}
 

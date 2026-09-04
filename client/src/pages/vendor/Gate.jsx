@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useAuth } from '../../context/auth/useAuth';
 import { useVendor } from '../../context/vendor/useVendor';
 import Card from '../../components/ui/Card';
@@ -15,7 +16,14 @@ function Row({ ok, label }) {
 
 export default function Gate() {
   const { user } = useAuth();
-  const { subscription, listings } = useVendor();
+  const { subscription, listings, fetchSubscription, fetchListings } = useVendor();
+
+  useEffect(() => {
+    fetchSubscription();
+    fetchListings();
+    // Runs once on mount — both actions are stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const kycApproved = user?.kycStatus === 'approved';
   const subOk = subscription.state === 'active' || subscription.state === 'grace';

@@ -6,11 +6,30 @@ import { api, getAccessToken, setAccessToken } from '../../utils/api';
 // register/login/OTP/refresh/logout below call the actual backend (CLAUDE.md
 // §9 — identity module, verified end-to-end). The magic OTP code stays valid
 // as the server's own documented dev bypass (server/src/utils/otp.js), so no
-// UI here needed to change to keep using it. quickSignIn/switchRole/
-// submitKyc/setKycStatus/startOAuth remain client-only testing levers — the
-// backend has no session-switching, KYC-review, or OAuth endpoints yet (KYC
-// review lands with the vendor module, CLAUDE.md §9), so those stay mocked
-// and clearly labeled as such in the UI that surfaces them.
+// UI here needed to change to keep using it. quickSignIn/switchRole now call
+// the real backend too (one fixed real test account per self-registerable
+// role — see signInAsRealRole below), since a role-gated real endpoint (the
+// vendor module's `requireRole('operator')`) checks the JWT's own role
+// claim, not anything the client merely asserts. submitKyc/setKycStatus/
+// startOAuth remain client-only testing levers — there's no real
+// client-triggerable KYC-*decision* endpoint (that's an admin action, and
+// the admin console itself isn't built yet, CLAUDE.md §9) and no real OAuth
+// provider is wired up, so those stay mocked and clearly labeled as such in
+// the UI that surfaces them.
+
+// One fixed real test account per self-registerable role, used by
+// signInAsRealRole below (quickSignIn/switchRole) — not a secret, just a
+// deterministic identity so the same demo account is reused across calls
+// instead of registering a fresh one every time.
+const QUICK_TEST_PASSWORD = 'quicksignin123';
+const QUICK_TEST_PHONE = {
+  traveller: '3009000001',
+  operator: '3009000002',
+  transport: '3009000003',
+  property: '3009000004',
+  seller: '3009000005',
+  influencer: '3009000006',
+};
 
 function readUser() {
   try {
@@ -187,34 +206,101 @@ export function AuthProvider({ children }) {
     persistUser(null);
   }, [persistUser]);
 
-  // Testing-only shortcut, not part of the wireframe spec — signs straight
-  // in as a fresh account for any of the 7 roles with no phone/OTP entry,
-  // so every RequireAuth/RequireRole-gated screen (§8) is reachable in one
-  // click while testing. Partner roles start already `kycStatus: 'approved'`
-  // rather than 'none' so a publish gate never blocks this path — approving
-  // KYC for real is its own already-built flow (identity/kyc), this is only
-  // for skipping straight past it. Same honestly-labeled-lever spirit as
-  // `BookingContext.forceOutcome` / the KYC-pending preview links, not
-  // hidden magic.
-  const quickSignIn = useCallback((roleId) => {
+  // One fixed real test account per self-registerable role — a genuine
+  // register-or-login round trip against the real backend, not a locally
+  // relabeled fake user. This matters because role-gated real endpoints
+  // (e.g. the vendor module's `requireRole('operator')`) check the role
+  // baked into the JWT itself, not anything the client claims (§2 law: "the
+  // UI gate is never the security control") — a quickSignIn/switchRole that
+  // only sets `user.role` locally carries no token at all, so every such
+  // endpoint 401s/403s. Idempotent: the first call for a role registers and
+  // auto-verifies via the server's own documented OTP dev-bypass code
+  // (`419027`, server/src/utils/otp.js); every call after that — this
+  // session or a future one, from either quickSignIn or switchRole — just
+  // logs in with the same fixed credentials, since the account already
+  // exists and is verified. Each role's own real state (KYC, subscription,
+  // listings, bookings) persists on the server across switches, same as any
+  // real account would, with no client-side bookkeeping needed for it.
+  const signInAsRealRole = useCallback(async (roleId) => {
+    const phone = QUICK_TEST_PHONE[roleId];
     const role = ROLES.find((r) => r.id === roleId);
-    // Not a real account — clear any real access token so this demo identity
-    // never accidentally rides a previous real login's session.
-    setAccessToken(null);
-    persistUser({
-      name: `Test ${role?.label || 'User'}`,
-      phone: '3000000000',
-      email: null,
-      role: roleId,
-      verified: true,
-      kycStatus: PARTNER_ROLES.includes(roleId) ? 'approved' : null,
-      kycReason: null,
-    });
+    const reg = await api.post('/identity/auth/register', {
+      method: 'phone', phone, password: QUICK_TEST_PASSWORD, role: roleId, name: `Test ${role?.label || roleId}`,
+    }, { auth: false });
+
+    let session;
+    if (reg.ok) {
+      const otp = await api.post('/identity/auth/otp/verify', {
+        userId: reg.data.userId, code: '419027', purpose: 'register',
+      }, { auth: false });
+      if (!otp.ok) return { ok: false, message: otp.error.message };
+      session = otp.data;
+    } else if (reg.error.code === 'DUPLICATE_ACCOUNT') {
+      // Already created by an earlier quick-sign-in/switch — this role's
+      // fixed test account exists and is verified, so just log in.
+      const loginRes = await api.post('/identity/auth/login', { identifier: phone, password: QUICK_TEST_PASSWORD }, { auth: false });
+      if (!loginRes.ok) return { ok: false, message: loginRes.error.message };
+      session = loginRes.data;
+    } else {
+      return { ok: false, message: reg.error.message };
+    }
+
+    setAccessToken(session.accessToken);
+    persistUser(session.user);
+    return { ok: true };
   }, [persistUser]);
 
+  // Admin has no self-registration (§4/§9 — a real admin account is seeded
+  // server-side, never created from the client), so it's the one role that
+  // stays a local-only mock — clearly not a real capability, same as every
+  // testing lever here. No real admin endpoints exist yet for it to fail
+  // against either way (module 09's backend isn't built).
+  const mockAdminUser = useCallback(() => {
+    setAccessToken(null);
+    persistUser({ name: 'Test Admin', phone: '3000000000', email: null, role: 'admin', verified: true, kycStatus: null, kycReason: null });
+    return { ok: true };
+  }, [persistUser]);
+
+  // Testing-only shortcut, not part of the wireframe spec — signs straight
+  // in as a fresh test account for any of the 7 roles with no phone/OTP
+  // entry, so every RequireAuth/RequireRole-gated screen (§8) is reachable
+  // in one click while testing. Partner roles no longer start pre-approved
+  // on KYC (that would mean silently faking a real admin decision, §3: "the
+  // model does not decide, a person decides" — the same principle applies
+  // here) — walk the real KYC/subscription flow from a fresh account, same
+  // as any real vendor would.
+  const quickSignIn = useCallback((roleId) => (roleId === 'admin' ? mockAdminUser() : signInAsRealRole(roleId)), [mockAdminUser, signInAsRealRole]);
+
+  // Still the mock path for the roles the real KYC backend doesn't support
+  // yet (transport/property/seller — see utils/kycDocs.js's own note); the
+  // `operator` role uses the real document actions below instead.
   const submitKyc = useCallback((payload) => {
     persistUser(user ? { ...user, kycStatus: 'pending', kyc: payload, kycReason: null } : user);
   }, [user, persistUser]);
+
+  // --- real KYC documents (operator only — server/src/routes/vendor,
+  // gated by requireRole('operator')) --------------------------------------
+  const fetchKycDocuments = useCallback(async () => {
+    const res = await api.get('/vendor/kyc/documents');
+    return res.ok ? { ok: true, documents: res.data.documents, required: res.data.required } : { ok: false, message: res.error.message };
+  }, []);
+
+  // `type` is a server type id (utils/kycDocs.js's DOC_TYPE) — resubmission
+  // scoped per document is the server's own behavior (kyc.service.js upserts
+  // the same (vendor, type) row), not something this call needs to know.
+  const submitKycDocument = useCallback(async (type, fileRef) => {
+    const res = await api.post('/vendor/kyc/documents', { type, fileRef });
+    return res.ok ? { ok: true, document: res.data } : { ok: false, message: res.error.message };
+  }, []);
+
+  // Re-reads the real `user` (incl. `kycStatus`, recomputed server-side on
+  // every document submit/review) — submitting a document or polling for a
+  // decision doesn't otherwise touch the locally-cached `user` object.
+  const refreshUser = useCallback(async () => {
+    const res = await api.get('/identity/auth/me');
+    if (res.ok) persistUser(res.data);
+    return res.ok ? { ok: true, user: res.data } : { ok: false, message: res.error?.message };
+  }, [persistUser]);
 
   // Lets a not-yet-built admin console (module 09) flip this later; also used
   // by the two "preview" links on kyc-pending until that console exists.
@@ -222,19 +308,14 @@ export function AuthProvider({ children }) {
     persistUser(user ? { ...user, kycStatus: status, kycReason: reason } : user);
   }, [user, persistUser]);
 
-  // The wireframe's own shell has a role switcher (§5 per-role nav) — this is
-  // a single demo account acting as different actors for testing, the same
-  // way the source spec's shared SEED store works, not a real multi-tenant
-  // account system (that needs a real backend). Switching into a partner role
-  // for the first time starts KYC at 'none'; switching back later preserves
-  // whatever KYC status that role had reached, rather than resetting it.
-  const switchRole = useCallback((roleId) => {
-    persistUser(user ? {
-      ...user,
-      role: roleId,
-      kycStatus: PARTNER_ROLES.includes(roleId) ? (user.kycStatus ?? 'none') : user.kycStatus,
-    } : user);
-  }, [user, persistUser]);
+  // The wireframe's own shell has a role switcher (§5 per-role nav) — now
+  // that quickSignIn is a real per-role account (above), switching "Acting
+  // as" has to be the same real operation, or a switch into e.g. 'operator'
+  // would carry whatever role's JWT was already in hand and 403 against the
+  // vendor module's real `requireRole('operator')` gate. Still not real
+  // multi-tenancy (each role is its own fixed test account, not the current
+  // human's account), just an honest version of the same demo shortcut.
+  const switchRole = useCallback((roleId) => (roleId === 'admin' ? mockAdminUser() : signInAsRealRole(roleId)), [mockAdminUser, signInAsRealRole]);
 
   const value = useMemo(() => ({
     user,
@@ -251,11 +332,15 @@ export function AuthProvider({ children }) {
     signOut,
     quickSignIn,
     submitKyc,
+    fetchKycDocuments,
+    submitKycDocument,
+    refreshUser,
     setKycStatus,
     switchRole,
   }), [
     user, signupRole, pending, chooseRole, startRegister, startOAuth, startReset,
-    resendOtp, verifyOtp, completeReset, login, signOut, quickSignIn, submitKyc, setKycStatus, switchRole,
+    resendOtp, verifyOtp, completeReset, login, signOut, quickSignIn, submitKyc,
+    fetchKycDocuments, submitKycDocument, refreshUser, setKycStatus, switchRole,
   ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

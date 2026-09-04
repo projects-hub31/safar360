@@ -1,7 +1,6 @@
 const Tour = require("../../models/Tour");
 const Booking = require("../../models/Booking");
 const Payment = require("../../models/Payment");
-const Policy = require("../../models/Policy");
 const ApiError = require("../../utils/ApiError");
 const { ok } = require("../../utils/respond");
 const { isValidCnic } = require("../../utils/validators");
@@ -9,9 +8,8 @@ const { genBookingRef, genPaymentId } = require("../../utils/reference-numbers")
 const { refundPct } = require("../../utils/cancellationPolicy");
 const lockService = require("../../services/lock.service");
 const ledgerService = require("../../services/ledger.service");
-const subscriptionService = require("../../services/subscription.service");
 const gateway = require("../../services/payment-gateway.mock");
-const { restoreSeat, deductSeat } = require("../../services/webhook.service");
+const { restoreSeat } = require("../../services/webhook.service");
 
 const SERVICE_FEE_PCT = 0.04;
 const PROMO_CODES = { NORTH10: 10 }; // mirrors client/src/context/booking/booking-context.js
@@ -34,6 +32,7 @@ async function settleIfLapsed(booking) {
   ) {
     booking.requestState = "declined";
     booking.status = "declined";
+    booking.autoDeclined = true;
     booking.outcomeReason = "The operator didn't respond within 24 hours. Nothing was ever charged.";
     await booking.save();
   }
@@ -291,55 +290,13 @@ async function createRequest(req, res, next) {
   }
 }
 
-// POST /api/booking/:ref/operator-decision — the operator side of the
-// request-to-book lifecycle. Lightweight stand-in for the real vendor
-// module's inbox (days 8-9 of §9); scoped here only so the traveller-facing
-// request flow has somewhere real to resolve to instead of dangling forever.
-async function operatorDecision(req, res, next) {
-  try {
-    const { action, reason } = req.body;
-    const booking = await Booking.findOne({ ref: req.params.ref });
-    if (!booking) throw new ApiError(404, "BOOKING_NOT_FOUND", "Booking not found.");
-    if (booking.bookingMode !== "request" || booking.requestState !== "pending") {
-      throw new ApiError(409, "NOT_PENDING", "This request has already been resolved.");
-    }
-    await settleIfLapsed(booking);
-    if (booking.requestState !== "pending") {
-      throw new ApiError(409, "WINDOW_ELAPSED", "The 24h response window already elapsed — this request auto-declined.");
-    }
+// The operator side of the request-to-book lifecycle now lives at
+// controllers/vendor/bookings.controller.js (`POST /api/vendor/bookings/
+// :ref/decision`), ownership-scoped to the tour's own vendor — this file
+// previously had an `operatorDecision` here with no ownership check at all
+// (any signed-in operator could decide on any other operator's booking),
+// flagged in CLAUDE.md as "a deliberately lightweight stand-in for the real
+// vendor inbox." `settleIfLapsed` is exported below for that controller to
+// reuse rather than duplicating the lapse check.
 
-    if (action === "accept") {
-      const updatedTour = await deductSeat(booking.tour, booking.departureId, booking.seats);
-      if (!updatedTour) {
-        throw new ApiError(409, "SOLD_OUT", "Not enough seats left to accept — decline this request instead.");
-      }
-      booking.requestState = "accepted";
-      booking.status = "confirmed";
-      await booking.save();
-
-      const vendorRate = await subscriptionService.getCommissionRate(updatedTour.ownerId);
-      const rate = vendorRate ?? (await Policy.getSingleton()).commissionPct / 100;
-      await ledgerService.accrueCommission({
-        ref: booking.ref,
-        party: updatedTour.operator,
-        label: `Commission on ${booking.ref}`,
-        gross: booking.amounts.total,
-        rate,
-        via: "request-to-book",
-      });
-    } else if (action === "decline") {
-      booking.requestState = "declined";
-      booking.status = "declined";
-      booking.outcomeReason = reason || "The operator declined this request. Nothing was ever charged.";
-      await booking.save();
-    } else {
-      throw new ApiError(400, "INVALID_ACTION", "action must be 'accept' or 'decline'.");
-    }
-
-    ok(res, { ref: booking.ref, status: booking.status });
-  } catch (err) {
-    next(err);
-  }
-}
-
-module.exports = { startLock, checkout, getStatus, history, cancelBooking, createRequest, operatorDecision };
+module.exports = { startLock, checkout, getStatus, history, cancelBooking, createRequest, settleIfLapsed };

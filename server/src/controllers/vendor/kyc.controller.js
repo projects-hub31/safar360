@@ -43,6 +43,26 @@ async function list(req, res, next) {
   }
 }
 
+// GET /api/vendor/kyc/documents/queue — admin-only, one row per vendor with
+// at least one document submitted (kyc.service.js's listQueue groups the
+// per-document rows into this shape — a reviewer decides per document, but
+// browses per vendor application).
+async function queue(req, res, next) {
+  try {
+    const rows = await kycService.listQueue();
+    ok(res, rows.map((r) => ({
+      vendorId: r.vendorId,
+      vendorName: r.vendorName,
+      vendorType: r.vendorType,
+      status: r.status,
+      submittedAt: new Date(r.submittedAt),
+      documents: r.documents.map(toDto),
+    })));
+  } catch (err) {
+    next(err);
+  }
+}
+
 // POST /api/vendor/kyc/documents/:id/review — admin-only. Reject requires
 // exactly one of the 4 fixed reasons; the reason is shown to the vendor
 // verbatim (§3), never paraphrased, so there's nothing to translate here.
@@ -64,4 +84,4 @@ async function review(req, res, next) {
   }
 }
 
-module.exports = { submit, list, review };
+module.exports = { submit, list, queue, review };

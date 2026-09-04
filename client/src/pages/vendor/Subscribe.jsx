@@ -31,9 +31,9 @@ export default function Subscribe() {
   const total = chosen.price + tax;
   const canPay = method && detail.trim().length >= 5;
 
-  const onPay = () => {
-    subscribe(plan);
-    navigate('/vendor/dashboard');
+  const onPay = async () => {
+    const res = await subscribe(plan);
+    if (res.ok) navigate('/vendor/dashboard');
   };
 
   return (

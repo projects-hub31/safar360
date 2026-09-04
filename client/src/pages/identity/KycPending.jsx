@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/auth/useAuth';
 import Card from '../../components/ui/Card';
@@ -5,10 +6,32 @@ import StatusPill from '../../components/ui/StatusPill';
 
 const ALLOWED = ['Build and save listing drafts', 'Set availability and pricing', 'Choose or change your plan'];
 const BLOCKED = ['Publish a listing', 'Receive bookings'];
+const POLL_MS = 5000;
 
 export default function KycPending() {
   const navigate = useNavigate();
-  const { setKycStatus } = useAuth();
+  const { user, setKycStatus, refreshUser } = useAuth();
+  const isOperator = user?.role === 'operator';
+  const settled = useRef(false);
+
+  // Real path: this is a genuine `pending` server state now, with no cron/
+  // admin console to push a decision to the client — poll for it, the same
+  // "check on read" shape every other lazily-settled state in this app uses
+  // (subscription grace timers, a lapsed request-to-book window). Not as
+  // aggressive as a payment poll (§3's 24h SLA isn't seconds-sensitive).
+  useEffect(() => {
+    if (!isOperator) return undefined;
+    settled.current = false;
+    const poll = setInterval(async () => {
+      if (settled.current) return;
+      const res = await refreshUser();
+      if (!res.ok || res.user.kycStatus === 'pending' || settled.current) return;
+      settled.current = true;
+      clearInterval(poll);
+      navigate(res.user.kycStatus === 'approved' ? '/identity/kyc-approved' : '/identity/kyc-rejected');
+    }, POLL_MS);
+    return () => clearInterval(poll);
+  }, [isOperator, refreshUser, navigate]);
 
   const preview = (status, reason) => {
     setKycStatus(status, reason);
@@ -49,30 +72,39 @@ export default function KycPending() {
         </div>
       </Card>
 
-      <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border-loud p-4">
-        <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">
-          Preview · module 09 (admin review) isn't built yet
-        </span>
-        <p className="text-xs leading-relaxed text-fg-muted">
-          These jump straight to what each decision looks like, without a real reviewer behind them.
+      {isOperator ? (
+        <p className="text-center text-xs leading-relaxed text-fg-muted">
+          This page checks for a decision every few seconds. Your documents are real and genuinely under
+          review — there's no admin console screen yet to decide from in this environment, so nothing here
+          fakes an outcome; a real decision only ever comes from a reviewer's own action
+          (<code className="font-mono">POST /api/vendor/kyc/documents/:id/review</code>).
         </p>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => preview('approved')}
-            className="min-h-9 rounded-lg border border-border-loud bg-surface px-3 text-xs font-semibold text-fg"
-          >
-            If approved
-          </button>
-          <button
-            type="button"
-            onClick={() => preview('rejected', 'The registration certificate photo is too blurry to read the expiry date.')}
-            className="min-h-9 rounded-lg border border-border-loud bg-surface px-3 text-xs font-semibold text-fg"
-          >
-            If rejected
-          </button>
+      ) : (
+        <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border-loud p-4">
+          <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">
+            Preview · real review isn't wired up for this role yet
+          </span>
+          <p className="text-xs leading-relaxed text-fg-muted">
+            These jump straight to what each decision looks like, without a real reviewer behind them.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => preview('approved')}
+              className="min-h-9 rounded-lg border border-border-loud bg-surface px-3 text-xs font-semibold text-fg"
+            >
+              If approved
+            </button>
+            <button
+              type="button"
+              onClick={() => preview('rejected', 'The registration certificate photo is too blurry to read the expiry date.')}
+              className="min-h-9 rounded-lg border border-border-loud bg-surface px-3 text-xs font-semibold text-fg"
+            >
+              If rejected
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

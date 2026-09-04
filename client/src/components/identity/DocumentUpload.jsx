@@ -4,39 +4,54 @@ import StatusPill from '../ui/StatusPill';
 const STATUS_PILL = {
   uploading: { tone: 'info', label: 'Uploading…' },
   done: { tone: 'success', label: 'In review' },
+  approved: { tone: 'success', label: 'Approved' },
   rejected: { tone: 'danger', label: 'Rejected' },
 };
 
 /**
- * C-04 Document uploader (see CLAUDE.md design system §2). No real backend to
- * upload to yet, so "uploading" is simulated with a timeout — the state
- * machine (empty → selected/uploading → done → rejected) is what matters here,
- * not the transport. "Uploaded" copy always says "in review," never
- * "verified" — only an admin decision earns that word.
+ * C-04 Document uploader (see CLAUDE.md design system §2). Two modes:
+ * pass `onUpload` for a real submission (async, returns { ok, slot? ,
+ * message? } — `slot` is the real post-submit state, from
+ * utils/kycDocs.js's mapOneDocToSlot); omit it and this falls back to the
+ * original simulated timeout, for the roles the real KYC backend doesn't
+ * support yet (Kyc.jsx branches on this). "Uploaded" copy always says "in
+ * review," never "verified" — only an admin decision earns that word, and
+ * `value.approved` only changes the pill, never unlocks anything extra.
  */
-export default function DocumentUpload({ label, constraint, value, onChange }) {
+export default function DocumentUpload({ label, constraint, value, onChange, onUpload }) {
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
 
   const status = value?.status || 'empty';
-  const pill = STATUS_PILL[status];
+  const pill = status === 'done' && value?.approved ? STATUS_PILL.approved : STATUS_PILL[status];
 
-  const simulateUpload = (filename) => {
-    onChange({ status: 'uploading', filename, reason: null });
-    setTimeout(() => onChange({ status: 'done', filename, reason: null }), 900);
+  const handleFile = async (file) => {
+    if (!file) return;
+    onChange({ status: 'uploading', filename: file.name, reason: null });
+
+    if (!onUpload) {
+      setTimeout(() => onChange({ status: 'done', filename: file.name, reason: null }), 900);
+      return;
+    }
+
+    const result = await onUpload(file);
+    if (!result.ok) {
+      onChange({ status: 'rejected', filename: file.name, reason: result.message || 'Upload failed — try again.' });
+      return;
+    }
+    onChange(result.slot);
   };
 
   const onPick = (e) => {
     const file = e.target.files?.[0];
-    if (file) simulateUpload(file.name);
     e.target.value = '';
+    handleFile(file);
   };
 
   const onDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) simulateUpload(file.name);
+    handleFile(e.dataTransfer.files?.[0]);
   };
 
   return (
@@ -82,13 +97,15 @@ export default function DocumentUpload({ label, constraint, value, onChange }) {
       {status === 'done' && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
           <span dir="auto">{value.filename}</span>
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="font-semibold text-primary-soft-text"
-          >
-            Replace
-          </button>
+          {!value.approved && (
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="font-semibold text-primary-soft-text"
+            >
+              Replace
+            </button>
+          )}
         </div>
       )}
 

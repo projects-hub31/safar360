@@ -4,18 +4,26 @@ import {
   KYC_QUEUE, FRAUD_QUEUE, DISPUTES, PAYOUT_CANDIDATES, DEFAULT_POLICY, AUDIT_SEED,
 } from './admin-context';
 import { useVendor } from '../vendor/useVendor';
+import { api } from '../../utils/api';
+import { REJECTION_LABELS } from '../../utils/kycDocs';
 
-// Module 09 (admin console). Three of the five queues below (KYC, fraud,
-// disputes) are seeded multi-actor demo data — a single demo account can't
-// produce a real multi-vendor/multi-traveller queue on its own, the same
-// limitation VendorContext.SEED_LEDGER already documents a pattern for (see
-// CLAUDE.md's module 09 build note). What IS real: this session's own vendor
-// ledger (merged in on the Ledger screen), and the social moderation queue
+// Module 09 (admin console). Fraud and disputes below are still seeded
+// multi-actor demo data — a single demo account can't produce a real
+// multi-vendor/multi-traveller queue on its own, the same limitation
+// VendorContext.SEED_LEDGER already documents a pattern for (see CLAUDE.md's
+// module 09 build note). What IS real: this session's own vendor ledger
+// (merged in on the Ledger screen), the social moderation queue
 // (SocialContext's real posts/reports — read directly by the Moderation
-// screen, not duplicated here). Where a seeded row's `linkedLedgerId` points
-// at a real VendorContext ledger row (fr-1/dp-1 → LG-4002, dp-2 → LG-4004),
-// resolving it for real calls VendorContext.reverseLedger — everything else
-// is a local, honestly-scoped mutation of this file's own seed arrays.
+// screen, not duplicated here), and now the KYC queue's `operator` rows
+// (GET /api/vendor/kyc/documents/queue — real document review only exists
+// server-side for that role, kyc.service.js's own comment) — `fetchKycQueue`
+// merges those in over the permanent seeded rows below (the same "seed stays,
+// real merges in" shape as SEED_LEDGER/LEGACY_SEED_REFS), since transport/
+// property/seller have no real KYC backend to replace their demo rows with
+// yet. Where a seeded row's `linkedLedgerId` points at a real VendorContext
+// ledger row (fr-1/dp-1 → LG-4002, dp-2 → LG-4004), resolving it for real
+// calls VendorContext.reverseLedger — everything else not covered above is a
+// local, honestly-scoped mutation of this file's own seed arrays.
 export function AdminProvider({ children }) {
   const { reverseLedger: reverseVendorLedger } = useVendor();
 
@@ -50,6 +58,43 @@ export function AdminProvider({ children }) {
     setKycQueue((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'rejected', decidedAt: Date.now(), decidedBy: 'You', reasonId, reasonLabel } : r)));
     logAction({ action: `KYC rejected — ${reasonLabel}`, target: row.vendorName, category: 'kyc', tone: 'danger' });
   }, [kycQueue, logAction]);
+
+  // Real rows (tagged `real: true`) are grouped per vendor but decided per
+  // document (§3: resubmission — and therefore review — is scoped per
+  // document, not the whole application) — replaces every previously-fetched
+  // real row wholesale rather than patching one in place, same shape as
+  // BookingContext.fetchHistory's "preserve seed, replace the rest."
+  const fetchKycQueue = useCallback(async () => {
+    const res = await api.get('/vendor/kyc/documents/queue');
+    if (!res.ok) return { ok: false, message: res.error.message };
+    const real = res.data.map((r) => ({
+      id: r.vendorId,
+      vendorId: r.vendorId,
+      vendorName: r.vendorName,
+      vendorType: r.vendorType,
+      status: r.status,
+      submittedAt: new Date(r.submittedAt).getTime(),
+      documents: r.documents,
+      real: true,
+    }));
+    setKycQueue((current) => [...current.filter((r) => !r.real), ...real]);
+    return { ok: true };
+  }, []);
+
+  const reviewKycDocument = useCallback(async (docId, decision, reason, vendorName, docType) => {
+    const res = await api.post(`/vendor/kyc/documents/${docId}/review`, decision === 'rejected' ? { decision, reason } : { decision });
+    if (!res.ok) return { ok: false, message: res.error.message };
+    await fetchKycQueue();
+    logAction({
+      action: decision === 'approved'
+        ? `KYC document approved — ${docType}`
+        : `KYC document rejected — ${docType} — ${REJECTION_LABELS[reason] || reason}`,
+      target: vendorName,
+      category: 'kyc',
+      tone: decision === 'approved' ? 'success' : 'danger',
+    });
+    return { ok: true };
+  }, [fetchKycQueue, logAction]);
 
   // --- Fraud review (§3 — three resolution actions map to ordinary actions) --
   const clearFraud = useCallback((id) => {
@@ -126,14 +171,14 @@ export function AdminProvider({ children }) {
   const value = useMemo(() => ({
     adminRole, setAdminRole,
     policy, savePolicy,
-    kycQueue, approveKyc, rejectKyc,
+    kycQueue, approveKyc, rejectKyc, fetchKycQueue, reviewKycDocument,
     fraudQueue, clearFraud, refundFraud, askForId,
     disputes, resolveDispute,
     payoutCandidates, batch, prepareBatch, approveBatch, resetBatch,
     audit, logAction,
   }), [
     adminRole, policy, savePolicy,
-    kycQueue, approveKyc, rejectKyc,
+    kycQueue, approveKyc, rejectKyc, fetchKycQueue, reviewKycDocument,
     fraudQueue, clearFraud, refundFraud, askForId,
     disputes, resolveDispute,
     payoutCandidates, batch, prepareBatch, approveBatch, resetBatch,

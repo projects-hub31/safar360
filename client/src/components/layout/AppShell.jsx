@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import Logo from './Logo';
 import { useApp } from '../../context/app/useApp';
@@ -29,6 +30,8 @@ export default function AppShell() {
   const { adminRole, setAdminRole } = useAdmin();
   const navigate = useNavigate();
   const cartCount = cart.reduce((n, l) => n + l.qty, 0);
+  const [switchingRole, setSwitchingRole] = useState(false);
+  const [switchRoleError, setSwitchRoleError] = useState(null);
 
   // Nav is role-aware (§5 per-role default nav) — a signed-out visitor and a
   // traveller both get the traveller nav, since that's the only role with a
@@ -50,10 +53,24 @@ export default function AppShell() {
     navigate('/discover/home');
   };
 
-  const onSwitchRole = (roleId) => {
-    switchRole(roleId);
-    const role = ROLES.find((r) => r.id === roleId);
-    navigate(role.nav[0][1]);
+  // switchRole now signs into that role's own real test account (see
+  // AuthContext's signInAsRealRole) — a genuine network round trip, not an
+  // instant local relabel, so this needs a brief in-flight state and needs
+  // to leave "Acting as" showing the previous role (the controlled <select>
+  // below is bound to `activeRole.id`, which only changes once `user`
+  // actually does) if the real sign-in fails rather than silently pretending
+  // it worked.
+  const onSwitchRole = async (roleId) => {
+    if (switchingRole) return;
+    setSwitchingRole(true);
+    setSwitchRoleError(null);
+    const result = await switchRole(roleId);
+    setSwitchingRole(false);
+    if (!result.ok) {
+      setSwitchRoleError(`Couldn't switch to ${ROLES.find((r) => r.id === roleId)?.label}: ${result.message || 'try again.'}`);
+      return;
+    }
+    navigate(ROLES.find((r) => r.id === roleId).nav[0][1]);
   };
 
   return (
@@ -146,8 +163,9 @@ export default function AppShell() {
                   <select
                     value={activeRole.id}
                     onChange={(e) => onSwitchRole(e.target.value)}
+                    disabled={switchingRole}
                     aria-label="Switch role"
-                    className="min-h-[34px] cursor-pointer rounded-lg border border-border-strong bg-raised px-2 text-xs font-semibold text-fg"
+                    className="min-h-[34px] cursor-pointer rounded-lg border border-border-strong bg-raised px-2 text-xs font-semibold text-fg disabled:opacity-50"
                   >
                     {ROLES.map((r) => (
                       <option key={r.id} value={r.id}>{r.label}</option>
@@ -182,6 +200,12 @@ export default function AppShell() {
           </div>
         </div>
       </header>
+
+      {switchRoleError && (
+        <div role="alert" className="border-b border-danger bg-danger-soft px-3 py-2 text-center text-xs text-danger-text sm:px-6">
+          {switchRoleError}
+        </div>
+      )}
 
       <main id="main" className="mx-auto max-w-[1440px] px-3 py-5 sm:px-6 sm:py-7">
         <Outlet />

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useVendor } from '../../context/vendor/useVendor';
 import { useApp } from '../../context/app/useApp';
@@ -12,8 +13,14 @@ const BUCKETS = [
 ];
 
 export default function Payouts() {
-  const { ledger } = useVendor();
+  const { ledger, fetchLedger } = useVendor();
   const { formatMoney } = useApp();
+
+  useEffect(() => {
+    fetchLedger();
+    // Runs once on mount — fetchLedger is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const reversed = ledger.filter((l) => l.state === 'reversed');
 

@@ -53,6 +53,36 @@ async function listDocuments(vendorId) {
   return KycDocument.find({ vendor: vendorId }).sort({ createdAt: 1 });
 }
 
+// GET /api/vendor/kyc/documents/queue — admin's review queue, one row per
+// vendor with at least one document on file (grouping is unavoidable: a
+// vendor's KYC application is per-document at the data layer, §3, but a
+// reviewer thinks in terms of "this vendor's application," not loose rows).
+async function listQueue() {
+  const docs = await KycDocument.find().sort({ createdAt: 1 });
+  const byVendor = new Map();
+  for (const doc of docs) {
+    const key = String(doc.vendor);
+    if (!byVendor.has(key)) byVendor.set(key, []);
+    byVendor.get(key).push(doc);
+  }
+  if (!byVendor.size) return [];
+
+  const vendors = await User.find({ _id: { $in: [...byVendor.keys()] } });
+  const vendorById = new Map(vendors.map((v) => [String(v._id), v]));
+
+  return [...byVendor.entries()].map(([vendorId, vendorDocs]) => {
+    const vendor = vendorById.get(vendorId);
+    return {
+      vendorId,
+      vendorName: vendor?.name || "Unnamed vendor",
+      vendorType: vendor?.role || "operator",
+      status: vendor?.kycStatus || "pending",
+      submittedAt: vendorDocs.reduce((min, d) => Math.min(min, d.createdAt.getTime()), Infinity),
+      documents: vendorDocs,
+    };
+  });
+}
+
 async function reviewDocument(docId, { decision, reason, reviewerId }) {
   const doc = await KycDocument.findById(docId);
   if (!doc) return null;
@@ -68,4 +98,4 @@ async function reviewDocument(docId, { decision, reason, reviewerId }) {
   return doc;
 }
 
-module.exports = { requiredDocsFor, recomputeStatus, submitDocument, listDocuments, reviewDocument };
+module.exports = { requiredDocsFor, recomputeStatus, submitDocument, listDocuments, listQueue, reviewDocument };

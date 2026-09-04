@@ -84,4 +84,6 @@ async function rawRequest(path, { method = 'GET', body, auth = true, retry = tru
 export const api = {
   get: (path, opts) => rawRequest(path, { method: 'GET', ...opts }),
   post: (path, body, opts) => rawRequest(path, { method: 'POST', body, ...opts }),
+  patch: (path, body, opts) => rawRequest(path, { method: 'PATCH', body, ...opts }),
+  del: (path, opts) => rawRequest(path, { method: 'DELETE', ...opts }),
 };

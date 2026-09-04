@@ -5,13 +5,17 @@ const subscriptionController = require("../../controllers/vendor/subscription.co
 const kycController = require("../../controllers/vendor/kyc.controller");
 const listingsController = require("../../controllers/vendor/listings.controller");
 const ledgerController = require("../../controllers/vendor/ledger.controller");
+const bookingsController = require("../../controllers/vendor/bookings.controller");
+const analyticsController = require("../../controllers/vendor/analytics.controller");
 
 const router = express.Router();
 
 router.use(requireAuth);
 
-// KYC review is admin-only — mounted before the blanket vendor-role gate
-// below, since a sub-admin doing KYC review is never an 'operator'.
+// KYC review (and the queue that feeds it) is admin-only — mounted before
+// the blanket vendor-role gate below, since a sub-admin doing KYC review is
+// never an 'operator'.
+router.get("/kyc/documents/queue", requireRole("admin"), kycController.queue);
 router.post("/kyc/documents/:id/review", requireRole("admin"), kycController.review);
 
 // Everything else in this module is the tour-operator's own vendor console
@@ -42,5 +46,11 @@ router.post("/listings/:id/departures/:depId/blackout", listingsController.toggl
 
 router.get("/ledger", ledgerController.getLedger);
 router.post("/ledger/:id/reverse", ledgerController.reverseRow);
+
+router.get("/bookings", bookingsController.list);
+router.get("/bookings/:ref", bookingsController.getOne);
+router.post("/bookings/:ref/decision", bookingsController.decide);
+
+router.get("/analytics", analyticsController.getAnalytics);
 
 module.exports = router;

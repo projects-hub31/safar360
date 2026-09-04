@@ -1,6 +1,6 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useVendor } from '../../context/vendor/useVendor';
-import { GRACE_DAYS } from '../../context/vendor/vendor-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';
@@ -8,7 +8,15 @@ import Countdown from '../../components/ui/Countdown';
 
 export default function Grace() {
   const navigate = useNavigate();
-  const { subscription, simulateChargeFailure, exhaustRetries, retryCharge, onGraceExpire, cancelSubscription } = useVendor();
+  const {
+    subscription, fetchSubscription, simulateChargeFailure, exhaustRetries, retryCharge, onGraceExpire, cancelSubscription,
+  } = useVendor();
+
+  useEffect(() => {
+    fetchSubscription();
+    // Runs once on mount — fetchSubscription is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (subscription.state !== 'grace') {
     return (
@@ -42,14 +50,14 @@ export default function Grace() {
         <span className="text-sm text-warning-text">Time left</span>
         <Countdown
           key={subscription.graceToken}
-          seconds={GRACE_DAYS * 86400}
+          seconds={subscription.graceRemainingSeconds}
           urgentAt={86400}
           onExpire={onGraceExpire}
         />
       </div>
       <div className="flex w-full gap-2">
-        <Button onClick={() => { retryCharge(); navigate('/vendor/dashboard'); }} fullWidth>Retry payment</Button>
-        <Button variant="destructive" onClick={() => { cancelSubscription(); navigate('/vendor/plans'); }} fullWidth>Cancel</Button>
+        <Button onClick={async () => { await retryCharge(); navigate('/vendor/dashboard'); }} fullWidth>Retry payment</Button>
+        <Button variant="destructive" onClick={async () => { await cancelSubscription(); navigate('/vendor/plans'); }} fullWidth>Cancel</Button>
       </div>
     </Card>
   );

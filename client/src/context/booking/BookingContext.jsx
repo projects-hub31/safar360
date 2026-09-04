@@ -1,25 +1,21 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { BookingContext } from './booking-context';
-import {
-  REQUEST_WINDOW_HOURS,
-  SERVICE_FEE_PCT,
-  PROMO_CODES,
-  refFor,
-} from './booking-context';
+import { SERVICE_FEE_PCT, PROMO_CODES } from './booking-context';
 import { AVAILABILITY, refundPct } from '../../data/traveler/tours';
 import { api } from '../../utils/api';
 
-// --- instant-mode booking: real backend (server/src/routes/booking) --------
+// --- real backend throughout (server/src/routes/booking) -------------------
 // startLock/beginCapture/checkBookingStatus/cancelBooking (for a real ref)/
-// fetchHistory/startGroupSplit/fetchGroup/payShare below all call the actual
-// server, verified end-to-end (CLAUDE.md §9). Request-to-book
-// (createRequest/acceptRequest/declineRequest) is the one flow still on the
-// mock path below — the real backend's operator-decision endpoint is
-// "a deliberately lightweight stand-in" for the real vendor inbox (§9's own
-// note), so wiring only the traveller-create half would strand a request
-// with no way to ever reach a real accepted/declined outcome in this UI.
-// `avail`/`bookings`(seeded)/`requests` below are the pre-existing mock
-// store for that one remaining flow; `groups` is now a real client-side
+// fetchHistory/createRequest/startGroupSplit/fetchGroup/payShare all call the
+// actual server, verified end-to-end (CLAUDE.md §9). Request-to-book's
+// operator side (accept/decline) now lives at VendorContext — a real
+// ownership-scoped vendor inbox exists (controllers/vendor/
+// bookings.controller.js), so this file no longer needs its own
+// accept/declineRequest or a local `requests` queue; a traveller only ever
+// creates a request here and polls its status (AwaitingAccept.jsx), exactly
+// like the instant-mode Awaiting.jsx screen already does.
+// `avail`/`bookings` below stay a canonical client-side seat store / seeded
+// legacy bookings — see each's own comment; `groups` is a real client-side
 // cache of server responses, not mock state.
 const LEGACY_SEED_REFS = new Set(['SFR-2026-0814-5521', 'SFR-2026-0801-2210']);
 
@@ -62,13 +58,7 @@ export function BookingProvider({ children }) {
   const [lock, setLock] = useState(null);
   const [paymentState, setPaymentState] = useState('idle');
   const [bookings, setBookings] = useState(() => [SEEDED_BOOKING, SEEDED_ACTIVE_BOOKING]);
-  const [requests, setRequests] = useState([]);
   const [groups, setGroups] = useState([]);
-
-  // Monotonic ids — generated inside event handlers (never render), so a
-  // plain incrementing counter is simpler and just as safe as Date.now().
-  const nextId = useRef(1);
-  const genId = useCallback((prefix) => `${prefix}${nextId.current++}`, []);
 
   // --- locking (instant-mode bookings only) — real POST /booking/lock ----
   // Returns { ok, message? } so the caller (TourDetail) can show a real
@@ -163,48 +153,36 @@ export function BookingProvider({ children }) {
     return { subtotal, discount, fee, total: subtotal - discount + fee };
   }, []);
 
-  // Polled by the Awaiting screen (real GET /booking/status/:ref) once a
-  // second until the webhook resolves it — the outcome is never decided
-  // client-side. Returns { kind: 'pending' } while still in flight, or a
-  // terminal { kind, reason, ref } once the server has an answer.
+  // Polled by both Awaiting (instant mode) and AwaitingAccept (request mode)
+  // — real GET /booking/status/:ref — once a second until the outcome is
+  // decided server-side (a webhook for instant mode, the vendor's own
+  // accept/decline for request mode; neither is ever decided client-side).
+  // Returns { kind: 'pending' } while still in flight (covers both a
+  // genuinely pending payment and an awaiting-accept request), or a terminal
+  // { kind, reason, ref } once the server has an answer — 'declined' is the
+  // one terminal kind that's request-mode-only.
   const checkBookingStatus = useCallback(async (ref) => {
     const res = await api.get(`/booking/status/${ref}`);
     if (!res.ok) return { kind: 'pending' }; // transient hiccup — keep polling
     const { status, outcomeReason, outcomeKind } = res.data;
-    if (status === 'pending') return { kind: 'pending' };
+    if (status === 'pending' || status === 'awaiting-accept') return { kind: 'pending' };
 
     setLock(null);
-    setPaymentState(status === 'confirmed' ? 'confirmed' : status === 'held' ? 'held' : 'failed');
+    if (status === 'confirmed' || status === 'held' || status === 'failed') {
+      setPaymentState(status === 'confirmed' ? 'confirmed' : status === 'held' ? 'held' : 'failed');
+    }
     return { kind: outcomeKind || status, reason: outcomeReason, ref };
   }, []);
 
   // --- request-to-book (operator-mediated, no lock, no charge) -----------
-  const createRequest = useCallback(({ tourId, title, price, seats, guests }) => {
-    const id = genId('rq');
-    setRequests((rs) => rs.concat({
-      id, tourId, title, price, seats, guests: guests || [],
-      deadlineAt: Date.now() + REQUEST_WINDOW_HOURS * 3600000,
-      status: 'pending',
-    }));
-    return id;
-  }, [genId]);
-
-  const acceptRequest = useCallback((id) => {
-    const req = requests.find((r) => r.id === id);
-    if (!req || req.status !== 'pending') return null;
-    setAvail((current) => ({ ...current, [req.tourId]: (current[req.tourId] ?? 0) - req.seats }));
-    const ref = refFor('SFR');
-    setBookings((bs) => bs.concat({
-      ref, tourId: req.tourId, title: req.title, seats: req.seats,
-      total: req.price * req.seats, method: null, state: 'confirmed',
-      guests: req.guests || [], departureAt: null, cancellationPolicy: 'standard', at: Date.now(),
-    }));
-    setRequests((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'accepted', ref } : r)));
-    return ref;
-  }, [requests]);
-
-  const declineRequest = useCallback((id, reason) => {
-    setRequests((rs) => rs.map((r) => (r.id === id ? { ...r, status: 'declined', reason } : r)));
+  // No seat is touched and nothing is charged until the vendor's own
+  // ownership-scoped decision (VendorContext.acceptBooking/declineBooking)
+  // — this only creates the request and hands back its ref for
+  // AwaitingAccept.jsx to poll via checkBookingStatus above.
+  const createRequest = useCallback(async ({ tourId, departureId, seats, guests }) => {
+    const res = await api.post('/booking/request', { tourId, departureId, seats, guests });
+    if (!res.ok) return { ok: false, message: res.error.message };
+    return { ok: true, ref: res.data.ref, deadlineAt: res.data.deadlineAt };
   }, []);
 
   // --- history (real GET /booking/history) --------------------------------
@@ -328,7 +306,6 @@ export function BookingProvider({ children }) {
     lock,
     paymentState,
     bookings,
-    requests,
     groups,
     startLock,
     setGuests,
@@ -341,17 +318,15 @@ export function BookingProvider({ children }) {
     checkBookingStatus,
     fetchHistory,
     createRequest,
-    acceptRequest,
-    declineRequest,
     startGroupSplit,
     fetchGroup,
     payShare,
     lapseGroup,
     cancelBooking,
   }), [
-    avail, lock, paymentState, bookings, requests, groups,
+    avail, lock, paymentState, bookings, groups,
     startLock, setGuests, applyPromo, chooseMethod, beginCapture, expireLock, clearLock,
-    totalsFor, checkBookingStatus, fetchHistory, createRequest, acceptRequest, declineRequest,
+    totalsFor, checkBookingStatus, fetchHistory, createRequest,
     startGroupSplit, fetchGroup, payShare, lapseGroup, cancelBooking,
   ]);
 

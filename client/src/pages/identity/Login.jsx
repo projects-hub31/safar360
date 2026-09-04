@@ -14,6 +14,8 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [quickSigningInAs, setQuickSigningInAs] = useState(null);
+  const [quickSignInError, setQuickSignInError] = useState(null);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -28,8 +30,16 @@ export default function Login() {
     navigate('/discover/home');
   };
 
-  const onQuickSignIn = (roleId) => {
-    quickSignIn(roleId);
+  const onQuickSignIn = async (roleId) => {
+    if (quickSigningInAs) return;
+    setQuickSigningInAs(roleId);
+    setQuickSignInError(null);
+    const result = await quickSignIn(roleId);
+    setQuickSigningInAs(null);
+    if (!result.ok) {
+      setQuickSignInError(result.message || 'Could not sign in as that role. Try again.');
+      return;
+    }
     navigate(ROLES.find((r) => r.id === roleId).nav[0][1]);
   };
 
@@ -81,9 +91,10 @@ export default function Login() {
           Quick sign-in · testing only, not a real account
         </span>
         <p className="text-xs leading-relaxed text-fg-muted">
-          Skips phone entry and the OTP screen entirely — signs you straight in as a fresh test account for
-          that role. Partner roles start already KYC-approved so every gated screen is reachable immediately.
-          Once signed in, switch between all 7 roles any time from "Acting as" in the header.
+          Skips phone entry and the OTP screen — signs you into one fixed real test account per role (a genuine
+          account on this server, registered the first time you use it). Partner roles start fresh, same as any
+          real vendor — walk KYC and a plan for real. Once signed in, switch between all 7 roles any time from
+          "Acting as" in the header.
         </p>
         <div className="flex flex-wrap gap-2">
           {ROLES.map((r) => (
@@ -91,12 +102,14 @@ export default function Login() {
               key={r.id}
               type="button"
               onClick={() => onQuickSignIn(r.id)}
-              className="min-h-9 rounded-lg border border-border-loud bg-surface px-3 text-xs font-semibold text-fg"
+              disabled={Boolean(quickSigningInAs)}
+              className="min-h-9 rounded-lg border border-border-loud bg-surface px-3 text-xs font-semibold text-fg disabled:opacity-50"
             >
-              {r.label}
+              {quickSigningInAs === r.id ? 'Signing in…' : r.label}
             </button>
           ))}
         </div>
+        {quickSignInError && <p role="alert" className="text-xs text-danger-text">{quickSignInError}</p>}
       </div>
 
       <p className="text-center text-sm text-fg-muted">

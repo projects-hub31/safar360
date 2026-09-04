@@ -1,20 +1,12 @@
+import { useEffect } from 'react';
 import { useVendor } from '../../context/vendor/useVendor';
 import { useApp } from '../../context/app/useApp';
 import Card from '../../components/ui/Card';
 
-// Seeded demo series — same honest framing as Dashboard's DEMO_KPIS: this
-// vendor's listings aren't merged into live traveller search in this pass
-// (see VendorContext.jsx), so there's no real multi-month booking history
-// to derive a chart from yet.
-const MONTHS = [
-  { label: 'Mar', bookings: 6 },
-  { label: 'Apr', bookings: 9 },
-  { label: 'May', bookings: 11 },
-  { label: 'Jun', bookings: 8 },
-  { label: 'Jul', bookings: 15 },
-  { label: 'Aug', bookings: 14 },
-];
-
+// Traffic-source breakdown stays illustrative — there's no referral/campaign
+// click-tracking backend yet (that lands with the future referral module),
+// so this endpoint can't honestly back real numbers here. Everything else on
+// this screen (KPIs, bookings-by-month) is real — GET /api/vendor/analytics.
 const SOURCES = [
   { label: 'Search & discovery', pct: 54 },
   { label: 'Direct link / repeat traveller', pct: 21 },
@@ -23,12 +15,17 @@ const SOURCES = [
 ];
 
 export default function Analytics() {
-  const { ledger } = useVendor();
+  const { analytics, fetchAnalytics } = useVendor();
   const { formatMoney } = useApp();
 
-  const totalNet = ledger.reduce((n, l) => n + l.net, 0);
-  const acceptedCount = ledger.length;
-  const max = Math.max(...MONTHS.map((m) => m.bookings));
+  useEffect(() => {
+    fetchAnalytics();
+    // Runs once on mount — fetchAnalytics is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const months = analytics?.monthly || [];
+  const max = Math.max(1, ...months.map((m) => m.bookings));
 
   return (
     <div className="mx-auto flex max-w-[720px] flex-col gap-4">
@@ -36,15 +33,15 @@ export default function Analytics() {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card className="flex flex-col gap-1 p-4">
-          <span className="font-mono text-2xl font-semibold">{acceptedCount}</span>
-          <span className="text-xs text-fg-muted">Bookings on record</span>
+          <span className="font-mono text-2xl font-semibold">{analytics?.bookingsCount ?? '—'}</span>
+          <span className="text-xs text-fg-muted">Confirmed bookings</span>
         </Card>
         <Card className="flex flex-col gap-1 p-4">
-          <span className="font-mono text-2xl font-semibold">{formatMoney(totalNet)}</span>
+          <span className="font-mono text-2xl font-semibold">{formatMoney(analytics?.netEarned ?? 0)}</span>
           <span className="text-xs text-fg-muted">Net earned</span>
         </Card>
         <Card className="flex flex-col gap-1 p-4">
-          <span className="font-mono text-2xl font-semibold">92%</span>
+          <span className="font-mono text-2xl font-semibold">{analytics?.acceptanceRate != null ? `${analytics.acceptanceRate}%` : '—'}</span>
           <span className="text-xs text-fg-muted">Acceptance rate</span>
         </Card>
       </div>
@@ -52,7 +49,7 @@ export default function Analytics() {
       <Card className="flex flex-col gap-3 p-4 sm:p-5">
         <strong className="text-sm">Bookings by month</strong>
         <div className="flex items-end gap-3" style={{ height: 120 }}>
-          {MONTHS.map((m) => (
+          {months.map((m) => (
             <div key={m.label} className="flex flex-1 flex-col items-center gap-1.5">
               <span className="text-xs font-mono text-fg-muted">{m.bookings}</span>
               <div
@@ -66,7 +63,10 @@ export default function Analytics() {
       </Card>
 
       <Card className="flex flex-col gap-2.5 p-4 sm:p-5">
-        <strong className="text-sm">Where bookings come from</strong>
+        <div className="flex items-baseline justify-between gap-2">
+          <strong className="text-sm">Where bookings come from</strong>
+          <span className="text-[11px] text-fg-subtle">Illustrative — no click/referral tracking yet</span>
+        </div>
         {SOURCES.map((s) => (
           <div key={s.label} className="flex flex-col gap-1">
             <div className="flex justify-between text-xs text-fg-muted">

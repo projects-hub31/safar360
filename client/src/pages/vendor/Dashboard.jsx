@@ -1,21 +1,26 @@
+import { useEffect } from 'react';
 import { useAuth } from '../../context/auth/useAuth';
-import { useBooking } from '../../context/booking/useBooking';
 import { useVendor } from '../../context/vendor/useVendor';
 import { useApp } from '../../context/app/useApp';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import StatusPill from '../../components/ui/StatusPill';
 
-// Seeded demo KPIs beside the one genuinely live figure (awaiting-answer
-// count, from BookingContext's real request queue) — see VendorContext.jsx
-// for why the rest aren't derived from a real booking loop yet.
-const DEMO_KPIS = { confirmedThisMonth: 14, acceptanceRatePct: 92, netEarnedMonth: 611676 };
-
 export default function Dashboard() {
   const { user } = useAuth();
-  const { requests } = useBooking();
-  const { subscription, ledger } = useVendor();
+  const {
+    subscription, fetchSubscription, ledger, fetchLedger, inbox, fetchInbox, analytics, fetchAnalytics,
+  } = useVendor();
   const { formatMoney } = useApp();
+
+  useEffect(() => {
+    fetchSubscription();
+    fetchLedger();
+    fetchInbox();
+    fetchAnalytics();
+    // Runs once on mount — all four actions are stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const gateOk = user?.kycStatus === 'approved' && (subscription.state === 'active' || subscription.state === 'grace');
   const bannerTone = user?.kycStatus === 'rejected' || subscription.state === 'suspended' ? 'danger' : !gateOk ? 'warning' : 'success';
@@ -25,7 +30,10 @@ export default function Dashboard() {
       ? `Identity verification is ${user?.kycStatus || 'not started'} — publishing is blocked until it's approved.`
       : `Your subscription is ${subscription.state || 'not started'} — publishing is blocked.`;
 
-  const awaiting = requests.filter((r) => r.status === 'pending').length;
+  const awaiting = inbox.filter((r) => r.status === 'pending').length;
+  const confirmedThisMonth = analytics?.monthly?.length ? analytics.monthly[analytics.monthly.length - 1].bookings : 0;
+  const acceptanceRateDisplay = analytics?.acceptanceRate != null ? `${analytics.acceptanceRate}%` : '—';
+  const netEarned = analytics?.netEarned ?? 0;
   const accruing = ledger.filter((l) => l.state === 'accruing' || l.state === 'pending').reduce((n, l) => n + l.net, 0);
   const totalGross = ledger.reduce((n, l) => n + l.gross, 0);
   const totalCommission = ledger.reduce((n, l) => n + l.commission, 0);
@@ -49,15 +57,15 @@ export default function Dashboard() {
           <span className="text-xs text-fg-muted">Awaiting your answer</span>
         </Card>
         <Card className="flex flex-col gap-1 p-4">
-          <span className="font-mono text-2xl font-semibold">{DEMO_KPIS.confirmedThisMonth}</span>
+          <span className="font-mono text-2xl font-semibold">{confirmedThisMonth}</span>
           <span className="text-xs text-fg-muted">Confirmed this month</span>
         </Card>
         <Card className="flex flex-col gap-1 p-4">
-          <span className="font-mono text-2xl font-semibold">{DEMO_KPIS.acceptanceRatePct}%</span>
+          <span className="font-mono text-2xl font-semibold">{acceptanceRateDisplay}</span>
           <span className="text-xs text-fg-muted">Acceptance rate</span>
         </Card>
         <Card className="flex flex-col gap-1 p-4">
-          <span className="font-mono text-2xl font-semibold">{formatMoney(DEMO_KPIS.netEarnedMonth)}</span>
+          <span className="font-mono text-2xl font-semibold">{formatMoney(netEarned)}</span>
           <span className="text-xs text-fg-muted">Net earned</span>
         </Card>
       </div>

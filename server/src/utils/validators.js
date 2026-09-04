@@ -15,4 +15,14 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ""));
 }
 
-module.exports = { CNIC_RE, CNIC_ERROR, isValidCnic, normalizePhone, isValidEmail };
+// Server-side mask, mirroring client/src/pages/vendor/BookingDetail.jsx's
+// own maskCnic exactly — a vendor's booking detail should never receive the
+// full CNIC over the wire in the first place (§6: "Masked CNIC display"),
+// not just render it masked client-side.
+function maskCnic(cnic) {
+  const m = CNIC_RE.test(String(cnic || "")) ? String(cnic).match(/^(\d{5})-(\d{7})-(\d)$/) : null;
+  if (!m) return cnic;
+  return `${m[1]}-•••••••-${m[3]}`;
+}
+
+module.exports = { CNIC_RE, CNIC_ERROR, isValidCnic, normalizePhone, isValidEmail, maskCnic };

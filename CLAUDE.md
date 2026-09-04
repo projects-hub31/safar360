@@ -1357,533 +1357,108 @@ a soft-lock requirement for a room the way it does for a tour seat.
 
 ---
 
-## 8. Suggested build order
+## 8. Suggested build order — status
 
-Given what's already scaffolded, the natural next slices are:
+Frontend-first phase (see the file-opening "Build strategy" note) is **complete across
+all 9 modules, client-side only** — no real backend and no route guards until item 11
+below. Per-module notes (what was added, what was deliberately deferred):
 
-1. ~~**Finish module 01 (discovery)**: wishlist, profile/preferences~~ — **done.**
-   `Wishlist.jsx` and `Profile.jsx` are built on the shared `ui/` primitives (§7);
-   `AppContext` gained a `language` preference to support it. All seven module-01
-   screens from the route table (§5) except the two Urdu (`-ur`) variants are now
-   wired: home, search, tour, property, wishlist, profile. Home/Search/TourDetail/
-   PropertyDetail were also refactored during this pass to use the new `ui/`
-   components instead of their original hand-rolled markup — verified in-browser
-   (screenshots, console-error check) after the refactor, not just by reading the
-   diff.
-2. ~~**Module 03 (identity)**: role selection → register/OTP → login → KYC~~ — **done,
-   client-side only.** All 8 non-Urdu screens from the route table are wired: role,
-   register, login, otp, otp-exhausted, kyc, kyc-pending, kyc-approved, kyc-rejected.
-   Added `AuthContext` (§7) with fully mocked register/login/OTP/KYC actions, the
-   `Countdown` primitive (§2/§7), and `DocumentUpload` (`components/identity/`) for
-   the KYC uploader. `AppShell`'s (then still named `TravelerLayout`) header is now auth-aware (Sign in ↔ Hi,
-   {name}/Sign out) and Home's six actor tiles pre-select the matching role on
-   `/identity/role` via router `state`, per §6's "arrived via a home-page actor tile"
-   note. Verified in-browser end-to-end for both branches: a partner role
-   (operator) through register → OTP → the full 3-step KYC wizard (including real
-   `file_upload` into the mock document uploader) → kyc-pending → both
-   approved/rejected previews; and the non-partner **reset-password** path
-   (duplicate-phone detection → OTP → signed back in) — not just the happy path.
-   **Not done**: there's no real backend, so `AuthContext`'s functions are mocks (see
-   §7) and there are no protected routes yet — nothing stops a signed-out user from
-   hitting `/identity/kyc` directly. Add route guards once module 02 or a vendor
-   module needs to actually gate on `user`/`kycStatus`, rather than speculatively now.
-3. ~~**Module 02 (booking/payment)**: checkout, gateway, awaiting, confirmed, the six
-   outcome branches, request-to-book, group-split, participant, history, cancel~~ —
-   **done, client-side only.** All 15 non-Urdu screens from the route table are
-   wired. Added `BookingContext` (§7) as the canonical, mutable seat store and the
-   full state machine from §3: a real soft-lock (a plain-duration `Countdown` for
-   display, a real `expiresAt` timestamp checked server-side-equivalent inside
-   `resolvePayment` for genuine late-webhook detection — not just a client timer that
-   can't actually expire anything), the atomic seat check
-   (`findOneAndUpdate`-equivalent, read from closure state rather than a stale
-   snapshot), deterministic payment-outcome triggers (§7), and real refund-tier math
-   in `cancelBooking` reading each listing's own `bookingMode`/`cancellationPolicy`
-   (added to `tours.js`'s `TOURS` rows, per §3's "per listing, not global"). `Outcome.jsx`
-   is one shared component for all six branch screens (expired/failed/held/sold-out/
-   late/declined), matching the wireframe's own "one branch template" design.
-   Verified in-browser end-to-end, not just read back: the full instant-booking path
-   with a promo code (JazzCash → gateway → awaiting → confirmed → e-ticket with the
-   correct `SFR-YYYY-MMDD-NNNN` ref → seat count visibly reduced elsewhere in the app
-   → cancel → correct tiered refund `%` → seat count restored); the decline-card and
-   fraud-card outcomes; the request-to-book path (operator-response panel → accept →
-   confirmed, seats deducted only on acceptance); and the full group-split path
-   (create → pay-my-share → real participant links → all-paid → confirmed) — in both
-   light and dark themes, with zero console errors. That last pass also caught and
-   fixed two real bugs before they'd have shipped: `Countdown` showing a 24-hour
-   window as bare `1439:51` minutes instead of `h:mm:ss`, and `payShare` **double-
-   booking and double-decrementing availability** every time a group split completed
-   (a `setState`-inside-`setState` purity bug StrictMode's double-invoke exposed —
-   see §7). Also fixed a real data-staleness bug in `TourDetail`'s seed departure
-   dates (hardcoded to a specific 2026 calendar date, so cancellation refund math
-   would silently degrade to 0% once "today" passed that date) by storing
-   `daysFromNow` instead and computing the real timestamp at booking time.
-   **Not done**: no real backend (see §7 for the mock/trigger list), no route guards,
-   and `sold-out`/`late-webhook` are only reachable via the Awaiting screen's labeled
-   force-outcome panel rather than a genuine concurrent second booking (see §7 for
-   why, and what a real fix would need — e.g. cross-tab `localStorage` sync or an
-   actual backend).
-4. ~~**Module 04 (vendor)**: dashboard, plans, subscribe, grace, listings (wizard),
-   availability, inbox, booking detail, payouts, payout detail, gate, analytics~~ —
-   **done, client-side only.** All 12 vendor routes are wired. Added `VendorContext`
-   (§7) holding the subscription state machine (§3's 5-state graph, with the same
-   honestly-labeled testing levers as module 02's force-outcome panel —
-   `simulateChargeFailure`/`retryCharge`/`exhaustRetries`/`onGraceExpire`), full
-   listing CRUD (draft → photos → policy → review → publish), a `publishGate(listing,
-   {kycApproved, subOk})` pure function checked live (not just at wizard-submit time,
-   so Gate/Review can always explain a current block), per-listing departures with a
-   hard floor at `booked` seats, and a seeded payout ledger (accruing/pending/
-   released/reversed buckets, reversal shown as a negative netted line rather than a
-   clawback). Also added: a `switchRole`/`ROLES` role-switcher in `AuthContext` (a
-   single demo account acting as every actor, mirroring the wireframe's own role
-   switcher — not real multi-tenancy) and made `AppShell` (then still named
-   `TravelerLayout`) role-aware off it;
-   and — a real gap found while designing this module's booking-detail screen, which
-   the spec requires to show masked CNIC — `TourDetail.jsx`'s request-to-book path
-   never actually collected traveller name/CNIC before this pass. Fixed by carrying a
-   `guests` array through `BookingContext.createRequest`/`acceptRequest` and adding
-   validated inline guest fields to the request-mode UI. Verified in-browser
-   end-to-end, not just read back: register → switch role to operator → KYC (reused
-   module 03, including real `file_upload`) → approve via the labeled preview link →
-   subscribe (Growth plan, tax calc verified) → full listing wizard (basics → 3 photos
-   → policy → blocked at Review on "Add at least one departure" → add a departure →
-   Review clears → Publish → status flips to `published`) → separately, as traveller,
-   request-to-book a `bookingMode: 'request'` tour with two named guests → as operator,
-   Inbox shows the request live (reading `BookingContext`'s real queue, not seeded
-   data) → BookingDetail shows both guests with correctly masked CNICs
-   (`35202-•••••••-6`) → Accept → seats deducted, booking confirmed, visible in the
-   traveller's own Booking History. Also checked Payouts/PayoutDetail (all 4 buckets,
-   reversal math) Gate (live formula against real KYC/subscription state), and
-   Analytics — zero console errors throughout. **Deliberate scope decision**:
-   vendor-published listings live only in `VendorContext`'s own `listings` array —
-   they are **not** merged into the traveller-facing Discovery catalog (`TOURS` /
-   `BookingContext.avail`) in this pass. Doing that properly needs per-listing
-   departures feeding a shared catalog layer, which is real, separate work — tracked
-   here as a known gap, not silently skipped. **Not done**: no real backend, no route
-   guards, no live catalog merge (above).
-5. ~~**Module 05 (transport & property)**: vehicles, routes, quotes, quote, permits,
-   property, rooms, menu, enquiries, featured~~ — **done, client-side only.** All 10
-   routes are wired, plus `TransportContext` (§7) and the traveller-facing `discover/
-   transport` enquiry screen (module 01's 7th screen). This module was built in an
-   earlier pass but had not been recorded here until this entry — CLAUDE.md's own
-   build-order log had drifted from the actual code, which is exactly the kind of gap
-   this file exists to prevent; treat this note as the correction.
-6. ~~**Traveller-facing slices of modules 06–08**: gear commerce, social, AI trip
-   planning~~ — **done, client-side only**, scoped deliberately to what the traveller
-   role's nav (§5) actually points at — `Trips` → `/ai/planner`, `Feed` →
-   `/social/feed`, `Gear` → `/shop/catalog` all resolved to `ComingSoon` before this
-   pass despite being live links in `auth-context.js`'s `ROLES` table. See "Traveller
-   workflows" above for the full behavioural list; in file terms this added
-   `ShopContext`/`SocialContext`/`AiContext` (§7) and 19 new pages: **06 commerce**
-   (`shop/catalog`, `product/:id`, `cart`, `checkout`, `order`, `tracking/:ref?`,
-   `returns/:ref/:subOrderId`, plus one shared `Outcome.jsx` for expired/failed/held/
-   sold-out — the same one-branch-template pattern as booking's `Outcome.jsx`); **07
-   social** (`feed`, `composer`, `post/:id`, `profile/:id?`, `chats`, `thread/:id`,
-   `report/:targetType/:targetId`); **08 AI** (`planner`, `itinerary`, `saved`,
-   `chatbot`). Verified via a clean `eslint` pass and a clean production `vite build`
-   (in-browser click-through wasn't available this session — the Chrome extension was
-   declined — so this still needs a human or a future session's in-browser pass before
-   being called fully verified, unlike modules 01–04's own entries above).
-   **Deliberate scope decisions, same spirit as module 04's catalog-merge note**:
-   gear checkout has no lock object at all (§3: "a cart holds nothing," unlike a tour's
-   seat hold) — only a cosmetic checkout-session countdown, since nothing is actually
-   released on timeout; the AI planner's itinerary-building algorithm is a real but
-   simple interest/rating/budget sort against the live `TOURS` catalog, not a claimed
-   "AI" — it's the same honest-transparency spirit as the chatbot's visible tool calls;
-   a handful of real bugs were caught and fixed while building this, in the same
-   register as the `payShare` bug §7 documents — an impure `setStock`-inside-
-   `setOrders` updater in `ShopContext.submitReturn` (fixed by reading the sub-order
-   from closure state first, then firing `setOrders`/`setStock` as separate top-level
-   calls, exactly the `payShare` fix pattern) and a `Date.now()` call in a non-lazy
-   `useState` initializer in `AiContext` (an eslint `react-hooks/purity` catch, not a
-   StrictMode one — fixed by switching to `useState(() => [...])`).
-   **The seller side of commerce is now built too** (`shop/seller-products`,
-   `shop/fulfilment`, `shop/returns` — the three routes `auth-context.js`'s `ROLES`
-   table already declared for the `seller` role's nav but that fell through to
-   `ComingSoon` until this pass): a product list scoped to this seller's own catalog
-   with live per-variant stock and a new `restockVariant` action on `ShopContext`; a
-   fulfilment queue that reads the same shared `orders`/`advanceFulfilment` action
-   Tracking's traveller-facing demo-advance button already used (§7's "call the same
-   shared action" pattern, not a parallel mutation path), filtered so a seller only
-   ever sees their own sub-orders from a shared order — verified in-browser with a
-   real multi-seller cart, confirming the other seller's parcel never appears; and a
-   seller-facing returns list (`shop/returns`, no params) added to resolve a nav
-   mismatch — the declared route had no screen behind it at all before this pass,
-   only the traveller-facing `shop/returns/:ref/:subOrderId` flow existed. There is no
-   real per-account seller identity anywhere in the app yet (unlike vendor/transport/
-   property, which are single-entity by construction), so the demo account's acting
-   seller is fixed to `DEMO_SELLER_ID = 'karakoram-gear'` in `shop-context.js` rather
-   than building real multi-seller-account switching nothing else here supports.
-   Verified in-browser end to end: a two-seller cart checkout, restocking a sold-out
-   variant back to purchasable (confirmed from the traveller side), fulfilment
-   packing→shipped→delivered matching what Tracking shows the traveller for the same
-   order, and a return landing correctly on the seller's returns list with stock
-   restored. A real bug was caught in the process — `Product.jsx` didn't reset its
-   local `added`/`variantId` state when navigating directly between two product pages
-   (same route, different `:id` — React reuses the component instance), so the second
-   product could silently show a false "Added to your cart" success state without
-   `addToCart` ever having been called — **since fixed**: `Product.jsx` now wraps its
-   body in an inner `ProductView` keyed by `id` (`<ProductView key={id} id={id} />`),
-   forcing a real remount on navigation between products rather than reusing stale
-   state, per §7's own stated preference for a remount-via-key over an effect that
-   watches a prop and calls `setState`. Also flagged, not fixed: the seller nav's
-   "Money" item still points at `/vendor/payouts`, which is scoped to `VendorContext`'s
-   tour-operator ledger, not gear commission — a seller visiting it today sees the
-   wrong data.
-   **The influencer-only money screens are now built too** (`social/campaigns`,
-   `social/collab/:id`, `social/referrals` — the two routes `auth-context.js`'s `ROLES`
-   table already declared for the `influencer` role's nav, plus `collab` as its own
-   drill-in screen per the §5 route table). Added the collaboration lifecycle to
-   `SocialContext` (§3: `invited→accepted→in_progress→delivered→paid`,
-   `invited→declined`, `accepted→cancelled`) as a `COLLAB_TRANSITIONS` table enforced
-   the same defensive way `CONTENT_STATES`/`moderateContent` already are — an illegal
-   move is refused, not just unoffered. `startCollab` is this codebase's own explicit
-   action for the un-named step between "accepted" and "in_progress" the spec's lifecycle
-   diagram doesn't itself name. A deliverable is tracked as two independent booleans,
-   `verified`/`disclosed` (§3: "released on verified + disclosed deliverables"), each
-   with its own toggle — `markDelivered` refuses until every deliverable on the
-   collaboration is both. Cancelling states the real 7-day-notice rule as on-screen
-   copy but applies immediately in this demo (no scheduling engine exists here — same
-   honest-simplification spirit as the room-reservation one-call note above).
-   `INFLUENCER_PLATFORM_FEE_PCT = 10` (in `social-context.js`) implements the one rule
-   stated twice in the source spec — §3 campaigns "paid ... net of a 10% platform fee
-   withheld" and §6 referrals "'Earned, not yet paid' breaks out gross / 10% tax
-   withheld / net" — as a single shared constant applied at display time to both a
-   paid-out collaboration and a released referral row, rather than two independent
-   10%s that could drift apart. The Referrals screen satisfies §6's literal
-   requirement — "the same shared ledger rows... filtered to `kind==='referral'`, that
-   the admin ledger screen shows" — by importing `PLATFORM_LEDGER_EXTRA` directly from
-   `context/admin/admin-context.js` rather than a second seed array; verified
-   in-browser that the rows and figures shown there are pixel-identical to what the
-   admin Ledger screen shows filtered to Referral. As with the seller module, there is
-   no real per-account influencer identity, so the demo account's acting influencer is
-   fixed to `DEMO_INFLUENCER_ID = 'amna-sheikh'` (already the one influencer seeded in
-   `AUTHORS`, and the same name the admin console's Ledger/Payout-Batch screens already
-   used) — one real seeded referral row for her was too thin to demo more than one
-   ledger state, so two more (`plr-7` accruing, `plr-8` released) were added directly
-   to `PLATFORM_LEDGER_EXTRA` in `data/admin/admin.js`, which also enriches what the
-   admin Ledger screen shows — a deliberate, documented side effect, not a leak.
-   Verified in-browser end to end: accept → start work → verify+disclose both
-   deliverables → mark delivered (button correctly disabled with a caption until every
-   deliverable is done) → mark paid, watching the Campaigns KPI totals and the
-   Earned-vs-Paid breakdown recompute correctly at each step (net = gross × 0.9); a
-   separate accepted collaboration cancelled with the inline consequence-with-amount
-   confirm (§2: destructive confirms never say "Confirm" alone); zero console errors
-   throughout.
-   The AI module's remaining screens — `map`, `landmark`, `geofence`, `weather` — are
-   now built too. `escalation` was assessed on this pass as correctly folded into the
-   chatbot's inline banner and not needing a separate screen — **that assessment was
-   wrong**, corrected below by a later pass that read the actual wireframe source
-   rather than relying on this file's own prior note; see that correction for what
-   `ai/escalation` actually needed and now has.
-   `data/ai/landmarks.js` is the hand-curated collection §3 calls for (name, region,
-   elevation, blurb, facts, related tours, access notes), seeded from names/elevations
-   already real elsewhere in the app (e.g. Khunjerab Pass's "4,693 m" already lived in
-   `kkh`'s `meta` string) rather than invented fresh. `AiContext.jsx`'s `FORECASTS`/
-   `ROADS` lookup tables (used by the chatbot's `getForecast`/`getRoadStatus` tool
-   calls) now carry a `landmarkId` cross-reference into that collection instead of
-   staying two silently-parallel sets of place names — `Map.jsx` is a stylized,
-   schematic SVG pin layout on 0–100 relative `coords`, deliberately not a real
-   geographic projection, so this stayed frontend-only with **no new mapping-library
-   dependency** (consistent with the tech-stack rule against adding one silently).
-   `Geofence.jsx` implements the exact 4-state permission machine (`prompt`/`granted`/
-   `denied`/`unavailable`) as an honestly-labeled simulation with real buttons, not a
-   call to the real browser geolocation/permissions API — that would pop a native
-   Chrome permission dialog, which (like a JS `alert()`) blocks automated interaction
-   and isn't something this app can honestly back with a real signal anyway; `denied`
-   never auto-re-prompts, only an explicit "Try again" moves it back to `prompt`, and
-   there is no public-post control at all (satisfying "never posts publicly by
-   default" the simplest honest way — not offering the control, rather than a flag
-   defaulted off).
-   `Weather.jsx` is operator-facing despite sitting under the `ai/` route prefix (§5
-   files the screen there; the spec has the operator, not the traveller, deciding).
-   Making its `cancel` decision genuinely run "the same `cancelBooking` action... no
-   separate weather-refund code path" (§3) surfaced a real constraint: `BookingContext`
-   only ever held bookings created live this session, so nothing existed for a demo
-   operator to cancel. Fixed by seeding exactly one real `BookingContext` booking
-   (`SFR-2026-0814-5521`, matching `VendorContext.SEED_LEDGER`'s `LG-4003` row — picked
-   because `LG-4002`/`LG-4004` were already touched by the fraud/dispute demos, `LG-4003`
-   wasn't) — the one deliberate exception to "every booking is created by a real
-   checkout." `cancelBooking`'s signature grew one optional parameter,
-   `cancelBooking(ref, reason, overridePct = null)`, so a caller that already knows the
-   correct rate (`Weather.jsx` reads `policy.weatherRefundPct` live from `AdminContext`
-   at the moment of the decision — `BookingContext` has no access to `AdminContext`,
-   which nests inside `AiProvider`, not outside it) can supply it directly instead of
-   this function deriving one from `reason`/the listing's own tier — still the one
-   ordinary action, just one more optional argument. `AiContext.decideWeatherAlert`
-   calls this and `VendorContext.reverseLedger` directly (both are ancestors of
-   `AiProvider` in `main.jsx`'s tree, so this is a same-provider call, not brokered
-   through a page) for the `cancel` branch only; `proceed`/`postpone`, and the
-   `Countdown`-driven auto-postpone on a blown decision window, never touch
-   booking/ledger state.
-   Verified in-browser end to end: Map → Landmark (real facts + a live-priced related
-   tour link) → Geofence's full `prompt`→`grant`→check-in path (itinerary-stop-reached
-   effect, mock emergency-contact notify, confirmed no public-post control exists) and,
-   separately, `prompt`→`deny` (confirmed no auto-re-prompt) and `unavailable` (check-in
-   correctly blocked with a captioned reason) → Weather: confirmed the countdown and
-   refund-rate copy read live `policy.weatherDecisionHours`/`weatherRefundPct`, then
-   cross-checked by switching to admin, dropping `weatherRefundPct` to 50% in Config,
-   and confirming — without a page reload — the Cancel button's label and computed
-   amount updated to match; executed the cancel and confirmed `LG-4003` actually flips
-   to `reversed` on the admin Ledger screen; separately tested `postpone` (blue `info`
-   pill) on the second, unlinked demo alert. Zero console errors throughout. One small
-   visual bug was caught and fixed in this same pass: `Khunjerab Pass`'s map pin sat
-   close enough to the canvas's top edge (`coords.y: 8`) that its own marker clipped
-   against the card's `overflow-hidden` — moved to `y: 14`.
-   At the time this paragraph was written, this looked like it closed out the last
-   module 08 gap and completed the frontend-first phase across all 9 modules — **that
-   turned out to be wrong**, corrected immediately below by a later pass that found two
-   more real gaps (module 07's `social/explore`, module 08's `ai/tracking`) plus the
-   `escalation` mis-assessment above, all missed because this file's own route-table
-   summary (§5) was itself an incomplete transcription of the wireframe, not because
-   anyone re-checked the actual source. See that correction for the real closing state.
-   What's genuinely left after it is real backend work (§8 item 8, below) plus the
-   smaller, previously-flagged non-blocking gaps: route guards, and the seeded-vs-live
-   Analytics series noted throughout this section.
-
-   **Correction, a later pass**: every "done" claim above was checked against this
-   file's own §5 route table, which was itself never re-verified against the actual
-   wireframe source after being transcribed once, early on. Asked directly to check,
-   this pass decoded `safar360-app.html` (the method §0's header already documents —
-   longest line, gzip+base64 module map, `json.loads()` the template) and enumerated
-   every real `sc-if value="{{ isX }}"` screen flag across all 9 batch docs. Two were
-   genuinely missing and one was wrongly marked complete:
-   - **`social/explore`** (module 07) existed only as a Feed *tab* that re-filtered the
-     same list in place — no search, no hashtags. The wireframe's `isExplore` is a
-     separate, richer screen (search input, live hashtag chips with counts, a 1:1-grid
-     with like/comment overlays). Built as `pages/social/Explore.jsx`; Feed's own
-     Followed/Explore tabs stay as they are (that part was correctly built — `isFeed`
-     genuinely has its own `feedTabs` sub-nav, a smaller, real, separate feature from
-     `isExplore`) but now carry an "Open full Explore →" link. `PostCard.jsx`'s hashtag
-     spans became real `Link`s to `/social/explore` with `state: { tag }`, matching the
-     wireframe's own tap-a-tag-to-filter behavior — `Explore.jsx` reads
-     `location.state?.tag` to seed its initial filter, the same `useLocation().state`
-     convention `Search.jsx` already established rather than a query-string mechanism.
-   - **`ai/tracking`** (module 08) didn't exist at all — genuinely missing, not merely
-     under-built, and not the same concept as `shop/tracking` (gear-parcel courier
-     tracking, unrelated). The wireframe's `isTracking` is a live in-trip location
-     screen: a pulsing "Live · Hunza & Attabad, day 3" header, a 4-stat grid, a
-     "Today's route" leg list, a "Who can see this" sharing-toggle list, and an honest
-     signal-loss note. Built as `pages/ai/Tracking.jsx` at `ai/tracking/:ref?`. It had
-     nothing honest to visualize against `BookingContext`'s only seeded booking
-     (`SFR-2026-0814-5521`, upcoming, not yet departed), so a second seeded booking was
-     added — `SFR-2026-0801-2210`, Hunza & Attabad Lake, `departureAt` fixed 2 days in
-     the past against a 5-day tour (putting "today" on day 3, matching the wireframe's
-     own literal example), matching `VendorContext.SEED_LEDGER`'s still-untouched
-     `LG-4001` row. The route's "signal drops past Hussaini bridge" leg is a real,
-     deterministic data flag (`dot: 'signal-lost'` in `TRACK_LEGS`) the honest copy is
-     keyed off, not decorative text always shown — and Hussaini bridge is the same
-     crossing `data/ai/landmarks.js`'s `hunza-attabad` entry already describes, not
-     invented fresh. `History.jsx` gained a "Track live" link, shown only for this one
-     genuinely trackable booking rather than implying a general in-progress capability
-     the route data doesn't actually back.
-   - **`ai/escalation`** (module 08) — a prior pass in this same item explicitly
-     assessed the chatbot's inline "Escalated" banner as already satisfying §3 and
-     declined to build a separate screen. Wrong: the wireframe's `isEscalation` is a
-     real dedicated hand-off screen (an agent identity card with a live wait clock, a
-     "what the agent can already see" scoped-context block, and two exit actions) that
-     the chatbot's own persistent header control (`"Talk to a person"`, next to the
-     assistant's name — confirmed genuinely always-rendered, never conditional) links
-     to. Built as `pages/ai/Escalation.jsx`. Rather than a second hand-rolled copy of
-     the scoping logic, `ai-context.js` gained `buildScopedContext(bookings, reason)`
-     and `EXCLUDED_FROM_AGENT` (a 4-item list — `saved cards` was missing from the
-     original 3-item version, caught while centralizing) — `sendChatMessage`,
-     `escalateNow`, and the new screen all now read the one function/constant, so the
-     inline chat tool-call block and the dedicated screen can never drift. The screen
-     reads its content from the most recent escalated message in `AiContext.messages`
-     (clicking any inline "Escalated" pill also jumps here now) rather than
-     recomputing anything. Its "Open the conversation" action needed a real judgment
-     call: the wireframe links to `#/social/thread`, implying a human-agent chat, but
-     no such backend exists. Fabricating a scripted back-and-forth would be dishonest;
-     silently dropping the link would under-deliver the directive. Landed on reusing
-     the app's one real messaging system — `SocialContext.startThread` gained an
-     optional `seedFromThem` param (only applied the first time a thread is created)
-     and `AUTHORS` gained a `support` entry (`Nida · safar360 support`) — so the link
-     opens a genuinely functional thread (real Sending→Sent→Delivered states, verified
-     by actually sending a message through it) seeded with one honest acknowledgment
-     line, never a fake ongoing conversation pretending a human is typing replies.
-   All three verified in-browser end to end (Chrome extension available): a Feed tag
-   tap landing on a correctly pre-filtered Explore; Tracking's toggle state and live
-   "updated Ns ago" tick both genuinely working (watched it advance a full minute);
-   Escalation reached via the chatbot's persistent control, its scoped-context block
-   cross-checked against zero drift, and its conversation link producing a real,
-   sendable thread. One small bug caught in this pass too: the scoped-context block's
-   "full assistant transcript (1 turns)" — fixed to pluralize correctly. Lint and build
-   both clean throughout. With this correction, the frontend-first phase across all 9
-   modules is, as far as a direct wireframe audit can confirm, actually complete now —
-   stated with that hedge deliberately, since the same file-vs-source drift that caused
-   this correction is exactly the failure mode to stay honest about, not repeat.
-7. ~~**Module 09 (admin console)**: console, kyc, moderation, ledger, payout-batch,
-   disputes, fraud, analytics, config, audit~~ — **done, client-side only.** All 10
-   routes are wired. Added `AdminContext` (§7 three-file split — `adminRole` in
-   `super`/`sub`/`finance`, the exact `perms()` matrix from §3, the 7-field `policy`
-   object with `savePolicy`, and an append-only `audit` log every action below writes
-   to) plus two new shared `components/ui/` primitives spec calls for (`DataTable` —
-   the KYC/moderation/audit/payout-batch shared shell, responsive table↔stacked-card at
-   Tailwind's `lg`; `KpiCard`/`BarChart` — the KPI/chart shells, max 2 series, no pie).
-   `AppShell`'s role switcher previously excluded `admin` outright (nav pointed at
-   `ComingSoon`) — that exclusion is removed, and a "Sub-role" picker now appears only
-   when acting as admin; the nav itself filters live through `perms()`, confirmed
-   in-browser to literally disappear (not grey out) items per role.
-   **The single-demo-account problem, resolved per queue**: KYC, fraud, and disputes
-   are seeded multi-actor data (`data/admin/admin.js`), the same pattern
-   `VendorContext.SEED_LEDGER` already established, since one logged-in demo account
-   can't produce a real multi-vendor/multi-traveller queue. Moderation is fully
-   live — it reads `SocialContext`'s real `posts`, and this pass added `reports` (per-
-   report records, for reason tallies like "Spam ×2"), `moderateContent` (decision
-   buttons generated from `CONTENT_STATES` itself — an illegal move is never offered),
-   and `appealPost` (one appeal, enforced-by-name to require a different reviewer than
-   the original decision). The Ledger screen merges `VendorContext.ledger` (this
-   session's one real vendor, live and mutable) with seeded `PLATFORM_LEDGER_EXTRA`
-   rows for every other party a platform ledger would carry. `VendorContext` gained a
-   `reverseLedger` action (§3's named commission-clawback action, previously missing —
-   only `setLedgerRowState` existed); fraud's Refund and a dispute's full-refund
-   resolution call it for real on the one row each links to (`fr-1`/`dp-1` →
-   `LG-4002`), everything else is a self-contained seeded mutation, documented inline
-   rather than silently blurred. Payout batch's two-step approval (preparer ≠ approver,
-   even same role) is demonstrated by name entry against a fixed `ADMIN_ROSTER`, since
-   there's no real multi-admin auth — a same-name approval attempt is refused and
-   logged to audit exactly like a real refusal would be.
-   Verified in-browser end-to-end this session (Chrome extension available, unlike
-   module 06–08's pass): signed in, switched to admin, confirmed nav/KPI tiles change
-   shape (not greyed) across `super`/`sub`/`finance`; KYC approve + reject-with-reason;
-   Moderation remove-with-reason → appeal refused for the same reviewer → appeal
-   succeeded for a different one; Config's `fraudThreshold` slider live-recalculating
-   which seeded fraud rows would hold, saved, and confirmed the committed value on both
-   the Console KPI tile and a fresh page load; Fraud's Refund action → confirmed for
-   real on the vendor's own Payouts screen (`LG-4002` moved from pending to reversed,
-   netted as a negative line) after switching role back to operator; Disputes'
-   mandatory-note + refund resolution, with "Not recorded" drawn honestly for the two
-   timeline events that never happened (Law 2). Two real bugs were caught and fixed in
-   this pass, same register as the `payShare`/`submitReturn` bugs above: the SLA
-   countdown on the KYC queue rendered a fractional-second value
-   (`17:53:59.19199999999546`) because `Countdown` needs a whole-second duration and
-   `slaSeconds()` wasn't flooring it; and Console's "above the live fraud threshold" KPI
-   was comparing against a hardcoded `0.75` instead of reading `policy.fraudThreshold`,
-   silently defeating the point of a *live* config-driven KPI. Ledger, Payout batch, and
-   Analytics were built to the same conventions but not walked end-to-end in-browser
-   this session — a follow-up pass should confirm those three the way the rest of this
-   entry's screens were.
-   **Not done**: no real backend (as with every module so far — see the file-opening
-   "Build strategy" note), no route guards, and the admin `Analytics` screen's monthly
-   series/funnel are seeded (same honest framing as vendor `Analytics.jsx` — no real
-   multi-month platform history exists yet to derive one from).
-8. **Server**: stand up Mongoose models for the entities in §4 before wiring routes, so
-   the state machines in §3 have somewhere real to live — pay particular attention to
-   putting commission rate on Vendor/Seller (not a global constant) and booking mode /
-   cancellation policy on Listing from the start (the client already models both on
-   each `TOURS` row), since retrofitting those later means touching every screen that
-   reads them. `BookingContext`'s mock functions were deliberately written to return
-   the same shape a real API call would (§7) — replacing their bodies with `fetch()`
-   calls once routes exist should not require changing any calling component.
-
-9. ~~**Client-side restructure**: one `pages`/`components`/`context`/`data`
-   per-module convention, plus route-level code-splitting~~ — **done.** `context/`
-   was flat (23 files, all 8 modules' `*-context.js`/`*Context.jsx`/`use*.js` trios in
-   one directory) — split into `context/<module>/`, mirroring `pages/`'s existing
-   per-module layout (§7's new "Folder structure" bullet has the full convention).
-   `components/TravelerLayout.jsx` — actually the shared shell every role mounts
-   through, not traveller-only, per its own role-switcher logic — renamed to
-   `components/layout/AppShell.jsx` (moved alongside `Logo.jsx`, the other genuine
-   cross-module component) so the name stops implying traveller-only scope.
-   `data/traveler/gear.js` and `data/traveler/social.js` moved to `data/shop/` and
-   `data/social/` respectively (they're that module's seed data, not traveller's;
-   `tours.js` stayed in `data/traveler/` — it genuinely is discovery's own catalog,
-   reused by other modules the same way `TOURS`/`AVAILABILITY` always were). Three
-   unreferenced Vite-boilerplate assets (`hero.png`, `react.svg`, `vite.svg` — zero
-   imports, confirmed by grep) were removed. Separately, `App.jsx`'s 66 static page
-   imports became `React.lazy()` + one root `<Suspense>` — the production build had
-   been flagging one ~530KB/145KB-gzip JS chunk; after this it's a ~296KB/94.5KB-gzip
-   shared chunk plus one small (0.7–14KB) chunk per screen, fetched on navigation
-   instead of all up front. Verified via a clean `eslint` pass and a clean production
-   `vite build` (both re-run after the move, not just before it) — in-browser
-   click-through wasn't available this session (Chrome extension declined), so a
-   future session should still confirm route transitions render their `Suspense`
-   fallback correctly and no screen regressed visually, even though the build/lint
-   passes prove every import resolves and nothing is dead code.
-
-10. **Context re-render pass** — every one of the 9 `context/*/…Context.jsx` providers
-    built its `value` object (and every action function inside it) fresh on each render,
-    with zero `useCallback`/`useMemo` anywhere in `context/` (confirmed by grep before this
-    pass). Nested 9-deep in `main.jsx`, that meant any state change in an outer provider
-    (e.g. `AppProvider`'s wishlist toggle) hands every inner provider's consumers — the
-    entire routed app — a brand-new context value and re-renders them, regardless of
-    whether they read that particular piece of state. Fixed by wrapping every action in
-    `useCallback` (functions that read state via closure — `kycQueue.find`, `posts.find`,
-    `bookings.find`, etc. — took that state as an explicit dependency rather than a
-    functional-updater form, to stay correct) and every provider's `value` in `useMemo`.
-    `SocialContext.jsx` also had `blockAccount` defined after `reportPost`, which reads it
-    — harmless with plain closures but a TDZ crash once `reportPost`'s `useCallback` deps
-    array needed to reference it, so the follow/block section moved above the posts
-    section. Also removed one genuinely dead line — `ChoiceCard`'s re-export in
-    `components/ui/index.js` was never actually imported through the barrel (every caller
-    imports it directly) — confirmed via `knip`, which also confirms zero unused files,
-    zero unused dependencies, and zero eslint `no-unused-vars` hits app-wide before and
-    after. Added a `vite.config.js` `manualChunks` split (`react`/`react-dom`/
-    `react-router-dom` into their own `vendor` chunk, function form — this Vite 8/Rolldown
-    setup rejects the older object-form `manualChunks`) so a returning user's browser
-    caches that ~73KB-gzip chunk across app deploys instead of re-fetching it every time
-    any page's code changes. Verified via a clean `eslint` pass (including
-    `react-hooks/exhaustive-deps`, which would flag a wrong/missing dependency) and a
-    clean production `vite build` after every file; no Chrome extension available this
-    session to click through the app, so a future session should still smoke-test a money
-    path (checkout, admin fraud refund) end to end to confirm no stale-closure regression
-    slipped past lint.
-
-11. **Nav data bug + route guards** — the `transport` and `seller` roles' "Money" nav item
-    (`auth-context.js`'s `ROLES` table) both pointed at `/vendor/payouts`, the tour-
-    operator's own ledger — wrong data shown to those two roles. Fixed by building each its
-    own earnings screen reading its own real data: `pages/shop/SellerPayouts.jsx` (two
-    honest buckets, Accruing/Payable, derived from each sub-order's existing fulfilment
-    state — no invented release-batch mechanic since `ShopContext` has no such trigger for
-    gear the way `VendorContext.ledger` does for tours; a returned sub-order shows Rs 0,
-    computed at display time since `submitReturn` doesn't persist a reversed-commission
-    field) and `pages/transport/Money.jsx` (accepted quotes only — §3's lead lifecycle has
-    nothing past `accepted` to key a payout stage off — commission read live off
-    `policy.commissionPct`, the same "policy is live, never hard-coded" rule the fraud/
-    weather gates already follow, since transport has no per-owner commission table the way
-    vendor plans and gear sellers do). Routed at `transport/money` and `shop/seller-payouts`.
-    Also added the route guards flagged as a known gap since item 2 above ("nothing stops a
-    signed-out user from hitting `/identity/kyc` directly"): `components/layout/
-    RequireAuth.jsx` and `RequireRole.jsx`, following the exact three-part gate template
-    `components/admin/PermGate.jsx` already established for admin sub-roles (an `EmptyState`
-    stating blocked · why · what unblocks it, never a silent redirect) rather than a new UX
-    pattern. `App.jsx`'s route tree is now grouped: public (discovery browsing, the identity
-    flow itself, public feed/profile/post, the group-split guest pay-link which must stay
-    reachable with no account per §3) → `RequireAuth` for everything else → nested
-    `RequireRole` groups per actor (`operator`, `transport`, `property`, `seller`,
-    `influencer`, `admin`) for actor-scoped screens, including `ai/weather` under `operator`
-    (§8 item 6's note that it's operator-facing despite the `ai/` prefix). Admin's existing
-    per-page `PermGate` checks are unchanged and still the finer-grained sub-role gate;
-    `RequireRole role="admin"` only adds the outer "signed in and acting as admin" check
-    those pages didn't have. This is still a single-demo-account role-switcher (§7), not
-    real multi-tenancy, so "wrong role" is phrased in the gate copy as "switch Acting as,"
-    not a real authorization failure. Verified via a clean `eslint` pass and a clean
-    production `vite build`; no Chrome extension available this session (declined), so a
-    future session should still click through: a signed-out deep link to `/identity/kyc`
-    and to a `vendor/*` URL, a traveller-role visit to a `vendor/*` URL, and both new Money
-    screens against real checkout/quote-accept data, to confirm the gates render correctly
-    and nothing above them regressed.
-
-12. **Quick sign-in (testing-only)** — item 11's route guards made manually testing every
-    role tedious (register → OTP → magic code `419027`, once per role, before the
-    `RequireRole` gates would even let a screen render). Added `AuthContext.quickSignIn
-    (roleId)`: signs straight in as a fresh test account for any of the 7 roles with no
-    phone/OTP entry at all, partner roles starting already `kycStatus: 'approved'` so no
-    publish gate blocks the path. Surfaced as a labeled panel on `identity/Login.jsx` (one
-    button per role) — same honestly-labeled-testing-lever convention as `BookingContext.
-    forceOutcome` and the KYC-pending preview links (§8 item 2), a dashed-border box that
-    says outright "testing only, not a real account," never presented as a real capability.
-    Once signed in via either this or the real flow, the header's existing "Acting as"
-    switcher (§7) still moves between all 7 roles with no further sign-in — this panel only
-    removes the *first* sign-in's friction. Verified via a clean `eslint` pass and a clean
-    production `vite build`; a first attempt at this edit landed only the `ROLES` import
-    (a typo'd absolute path silently failed the actual function-body edit) and lint caught
-    it immediately as `quickSignIn` referenced-but-undefined — fixed same session, flagged
-    here as a reminder that a green lint run after multi-edit changes is load-bearing, not
-    a formality. **Not yet manually verified in-browser** (Chrome extension still declined
-    this session) — the user was walking through it live via `#/identity/login` at the time
-    this entry was written; if that surfaced anything, a future session should check here
-    first before re-testing from scratch.
+1. **Module 01 (discovery)** — done. All 7 non-Urdu screens (home, search, tour,
+   property, wishlist, profile). Home/Search/TourDetail/PropertyDetail refactored onto
+   the shared `ui/` primitives. `AppContext` gained a `language` preference.
+2. **Module 03 (identity)** — done, client-side only. All 8 non-Urdu screens (role,
+   register, login, otp, otp-exhausted, kyc, kyc-pending/approved/rejected). Added
+   `AuthContext` (fully mocked register/login/OTP/KYC), `Countdown`, and
+   `DocumentUpload`. No route guards yet at this point (added later, item 11).
+3. **Module 02 (booking/payment)** — done, client-side only. All 15 non-Urdu screens.
+   Added `BookingContext` as the canonical mutable seat store implementing §3's full
+   state machine: a real soft-lock, atomic seat check read from closure state,
+   deterministic payment-outcome triggers (§7), and refund-tier math reading each
+   listing's own `bookingMode`/`cancellationPolicy`. `Outcome.jsx` is the one shared
+   component for all six outcome branches. Non-obvious gotchas hit and fixed here (see
+   §7 for the general rules these taught): `Countdown` must render `h:mm:ss` above an
+   hour, not bare minutes; `payShare` had a `setState`-inside-`setState` purity bug that
+   silently double-booked/double-decremented availability on every group-split
+   completion; seed departure dates were hardcoded to a specific calendar date and had
+   to become a `daysFromNow` offset instead (or refund-tier math silently degrades to 0%
+   once "today" passes that date). **Not done**: no real backend, no route guards, and
+   `sold-out`/`late-webhook` are only reachable via the Awaiting screen's labeled
+   force-outcome panel (no genuine second actor exists in a single-browser demo).
+4. **Module 04 (vendor)** — done, client-side only. All 12 routes. Added `VendorContext`
+   (subscription state machine, listing CRUD with `publishGate`, per-listing departures
+   with a hard floor at booked seats, seeded payout ledger with accruing/pending/
+   released/reversed buckets). Added `switchRole`/`ROLES` to `AuthContext` — a single
+   demo account acting as every actor, not real multi-tenancy — and made `AppShell`
+   role-aware off it. **Deliberate scope decision**: vendor-published listings live only
+   in `VendorContext.listings`, not merged into the traveller-facing Discovery catalog
+   (`TOURS`/`BookingContext.avail`) — tracked as a known gap here, closed later on the
+   backend side (§9's vendor-backend entry).
+5. **Module 05 (transport & property)** — done, client-side only. All 10 routes, plus
+   `TransportContext` and the `discover/transport` traveller enquiry screen.
+6. **Traveller-facing slices of 06–08 (gear, social, AI)** — done, client-side only.
+   Added `ShopContext`/`SocialContext`/`AiContext` and 19 pages across gear commerce,
+   social, and AI. The seller side of commerce (`seller-products`, `fulfilment`,
+   `returns`) and the influencer money screens (`campaigns`, `collab`, `referrals`) were
+   also built in this pass — each pinned to one fixed demo-account id
+   (`DEMO_SELLER_ID='karakoram-gear'`, `DEMO_INFLUENCER_ID='amna-sheikh'`), since neither
+   role has real per-account identity the way vendor/transport/property do (single-entity
+   by construction). The AI module's `map`/`landmark`/`geofence`/`weather` screens were
+   also built; `Weather.jsx` is operator-facing despite sitting under the `ai/` prefix
+   (routed under the `operator` role guard in item 11). A later audit against the actual
+   decoded wireframe source (not just this file's own §5 summary, which turned out to be
+   an incomplete transcription) found three real gaps that had been missed or
+   misassessed: **`social/explore`** (a real search+live-hashtag-chip screen, distinct
+   from the Feed tab that just re-filters in place), **`ai/tracking`** (a live in-trip
+   location screen — distinct from `shop/tracking`'s gear-parcel courier tracking), and
+   **`ai/escalation`** (a dedicated human-hand-off screen, wrongly assessed earlier as
+   already covered by the chatbot's inline "Escalated" banner). All three are now built.
+   Lesson for future module work: re-verify §5's route table against the decoded
+   wireframe source directly rather than trusting a prior transcription.
+7. **Module 09 (admin console)** — done, client-side only. All 10 routes. Added
+   `AdminContext` (RBAC `perms()` matrix, the 7-field policy object, an append-only
+   audit log every mutating action writes to) plus two new shared `ui/` primitives:
+   `DataTable` (KYC/moderation/audit/payout-batch shared shell) and `KpiCard`/`BarChart`.
+   KYC/fraud/disputes use seeded multi-actor data (no real multi-vendor account model
+   exists); Moderation is fully live against `SocialContext`'s real posts/reports.
+   Ledger, Payout-batch, and Analytics were built to the same conventions but not walked
+   end-to-end in-browser in this pass — flagged as a follow-up check, not a blocker.
+8. **Server** — not started at the time this item was written; the full plan is §9.
+9. **Client-side restructure** — done. `context/` (previously flat, 23 files) split into
+   `context/<module>/` mirroring `pages/`'s layout. `components/TravelerLayout.jsx`
+   renamed to `components/layout/AppShell.jsx` (it wraps every role, not just
+   traveller's). `data/traveler/gear.js`/`social.js` moved to `data/shop/`/`data/social/`
+   (they're those modules' seed data, not discovery's). Dead Vite-boilerplate assets
+   removed. `App.jsx`'s static page imports converted to `React.lazy()` + one root
+   `<Suspense>`, splitting one large JS chunk into a shared chunk plus one small chunk
+   per screen.
+10. **Context re-render pass** — done. Every context provider's `value` object and every
+    action function were being rebuilt fresh on each render (zero `useCallback`/
+    `useMemo` anywhere in `context/`), so any state change in an outer provider
+    re-rendered the entire 9-deep provider tree regardless of relevance. Fixed by
+    wrapping every action in `useCallback` and every provider's `value` in `useMemo`.
+    Also added a `vite.config.js` `manualChunks` split (function form — this Vite
+    8/Rolldown setup rejects the older object form) so the react/react-dom/
+    react-router-dom vendor chunk stays cached across app deploys.
+11. **Nav data bug + route guards** — done. The `transport` and `seller` roles' "Money"
+    nav item both wrongly pointed at `/vendor/payouts` (the tour-operator's own ledger).
+    Fixed with dedicated `pages/shop/SellerPayouts.jsx` (Accruing/Payable buckets derived
+    from fulfilment state) and `pages/transport/Money.jsx` (accepted quotes only, per
+    §3's lead lifecycle, commission read live off `policy.commissionPct`). Also added the
+    route guards flagged as a gap since item 2: `components/layout/RequireAuth.jsx` and
+    `RequireRole.jsx` (same three-part gate template as `components/admin/PermGate.jsx`
+    — an `EmptyState` stating blocked/why/what unblocks it, never a silent redirect).
+    `App.jsx`'s route tree is now grouped: public (discovery browsing, the identity flow
+    itself, public feed/profile/post, the group-split guest pay-link) → `RequireAuth` for
+    everything else → nested `RequireRole` groups per actor. This is still a
+    single-demo-account role-switcher, not real multi-tenancy, so gate copy says "switch
+    Acting as," not a real authorization failure.
+12. **Quick sign-in (testing-only)** — done. `AuthContext.quickSignIn(roleId)` signs
+    straight in as a fresh test account for any of the 7 roles with no phone/OTP entry
+    (partner roles start already `kycStatus: 'approved'`), surfaced as a labeled
+    testing-only panel on `identity/Login.jsx` — same honestly-labeled-lever convention
+    as `BookingContext.forceOutcome`. The header's "Acting as" switcher still moves
+    between all 7 roles afterward with no further sign-in; this panel only removes the
+    *first* sign-in's friction.
 
 Do not build all 9 modules' UI against mock data first and wire the backend later "in
 bulk" — the payment/inventory/moderation state machines are the actual product, and
@@ -1910,13 +1485,11 @@ modules realistic for two people. Two rules carry over unchanged from the fronte
    is real and verified do the two devs split onto independent modules.
 2. **Integrate as you go, per module — no big-bang rewire at the end.** The moment a
    module's routes exist, swap that module's context actions from mock bodies to real
-   `fetch()` calls and verify the flow in-browser (same standard §8's entries hold
-   themselves to: click through the real screens, check the console, confirm state
-   actually persists across a reload) before starting the next module. This is exactly
-   why the mock functions were shaped the way they were (§7) — a calling component
-   should never need to change, only the function body. Waiting until all 9 backends
-   exist to wire any of them risks discovering a shape mismatch nine times at once
-   instead of once each.
+   `fetch()` calls and verify the flow in-browser before starting the next module. This
+   is exactly why the mock functions were shaped the way they were (§7) — a calling
+   component should never need to change, only the function body. Waiting until all 9
+   backends exist to wire any of them risks discovering a shape mismatch nine times at
+   once instead of once each.
 
 ### Server structure (build this first, day 1)
 
@@ -1960,20 +1533,18 @@ shape the mocked context actions already use (§7), so the eventual `fetch()` sw
 mechanical change, not a reinterpretation.
 
 **Soft locks**: §4 frames these as TTL keys, Redis-first with a Mongo TTL index as
-fallback. Since Redis isn't provisioned yet and adding new infra on day 1 is its own risk,
+fallback. Since Redis isn't provisioned and adding new infra on day 1 is its own risk,
 default to a **Mongo TTL index** (a `Lock` collection with an `expiresAt` field and a
-`{ expireAfterSeconds: 0 }` index) unless the team already has Redis available — note
-this as a decision to make explicitly on day 1, not silently default without saying so.
+`{ expireAfterSeconds: 0 }` index) unless the team already has Redis available.
 
 **Payment gateway**: there is no real gateway integrated (Stripe/JazzCash/etc. are out of
-scope for this pass — confirm with the user if that changes). Build
-`services/payment-gateway.mock.js`: a charge request returns `pending` immediately, then
-asynchronously (a few seconds later) fires a signed request to the app's own
-`POST /api/webhooks/payment`, going through the **real** 3x/30s signature-verification-
-retry path (§4) rather than skipping it. Keep the same deterministic test triggers the
-client already established (§7: card `4000000000000002` → declined,
-`4100000000000019` → held, wallet number ending `0000` → declined, total ≥ Rs 400,000 →
-held) so existing manual test steps keep working once the client is wired to real calls.
+scope for this pass — confirm with the user if that changes). `services/
+payment-gateway.mock.js`: a charge request returns `pending` immediately, then
+asynchronously fires a signed request to the app's own `POST /api/webhooks/payment`,
+going through the **real** 3x/30s signature-verification-retry path (§4). Keep the same
+deterministic test triggers the client already established (§7: card
+`4000000000000002` → declined, `4100000000000019` → held, wallet number ending `0000` →
+declined, total ≥ Rs 400,000 → held).
 
 ### Day-by-day
 
@@ -1994,299 +1565,324 @@ schedule) and split cleanly afterward — if that pairing turns out to run long,
 into the buffer at the end, not into a later module's time, since days 8+ are genuinely
 independent per-column work.
 
-### Today's tasks (day 1 — do these now)
+### Progress log
 
-Two tracks, one person each, so both land by end of day and tomorrow's identity build has
-something to start from:
+**Day 1 (2026-09-01) — server skeleton, `Policy`/`User` models, auth middleware: done.**
+`config/env.js`/`db.js` (fail-loud on connect failure — verified against a deliberately
+unreachable Mongo URI, confirmed exit code 1), the `{ok,data}`/`{ok:false,error}` envelope
++ `errorHandler`, `models/Policy.js` (singleton, §3's 7 fields with real schema
+min/max), `GET /api/admin/config`, `seeds/policy.seed.js`. `models/User.js` (7 roles +
+`adminRole`, otp subdocument, bcrypt), `requireAuth`/`requireRole` middleware. No MongoDB
+was provisioned in this environment, so the DB round-trip itself wasn't run
+end-to-end at this point — that needed a real `MONGODB_URI` (Atlas free tier is fine).
 
-**Track 1 — server skeleton & DB**
-1. Restructure `server/` into the `src/{config,middleware,models,routes,controllers,
-   services,utils}` layout above; move the bare route out of `server.js` into this
-   structure.
-2. `config/db.js` — Mongoose connect against `process.env.MONGODB_URI`, fail loud (exit
-   the process) if it can't connect rather than serving with no DB.
-3. `.env.example` in `server/` (already gitignored — confirm `.env` itself never gets
-   committed) with `MONGODB_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT`.
-4. `middleware/errorHandler.js` + the `{ ok, data }`/`{ ok:false, error }` response
-   envelope convention (above) — apply it to the existing `GET /` route as the first
-   example.
-5. `Policy` model (singleton, §3's 7 fields) + a seed script, and `GET /api/admin/config`
-   returning it — this unblocks every later module that reads policy live instead of
-   hardcoding a threshold.
+**Days 2–7 (2026-09-02) — full identity + discovery + booking/payment core: done.**
+Identity: register/login/otp-verify/resend/refresh/logout/me, password forgot/reset. Real
+bcrypt+JWT, 6-digit OTP (5 min TTL/5 attempts/15-min lockout) with the client's magic code
+`419027` kept as a non-production bypass. Refresh rotation is a real `Session` model keyed
+by `family`/`jti` — reusing an already-rotated token kills the whole family (§4's theft
+rule); a password reset kills every session for the user. Per-phone rate limiting
+(in-memory, documented Redis stand-in).
+Discovery: `models/Tour.js` (embedded `departures`, each with its own
+`seatsTotal`/`seatsLeft`), seeded from `tours.js`'s 10 rows by hand (that file imports
+`.jpg` assets, so it can't be `require()`d server-side). `GET /api/discover/tours` ports
+the client's exact search/filter/sort logic including the sponsored-slot interleave.
+Booking/payment: soft lock as a Mongo TTL collection; mock gateway + webhook service
+resolving through one `processPaymentWebhook` function whether delivered in-process or via
+a real webhook POST, deterministic test triggers preserved, fraud score modeled as the
+weighted-factor breakdown (§3), not a bare number; atomic seat deduction via
+`findOneAndUpdate` + `arrayFilters` + `$gte`; all six outcome branches real; cancellation
+reads each booking's snapshotted policy tier, restores the seat, reverses the ledger row;
+request-to-book's 24h window is enforced lazily on read (no cron infra); `ledger.service.js`
+(`accrueCommission`/`reverseLedger`) is the one shared implementation, reading
+`Policy.commissionPct` as the fallback rate until the real per-vendor rate exists.
+**Bug caught before verification**: the first draft kept a booking's `Lock` alive until its
+webhook resolved, leaving a window where checkout could double-submit against the same
+lock — fixed by snapshotting `lockExpiresAt` onto the `Booking` and releasing the `Lock`
+immediately at checkout; the webhook reads the snapshot, and a second checkout on an
+already-consumed `lockId` now 404s.
+Verified genuinely (not just syntax-checked): `mongodb-memory-server` installed as a
+throwaway dev-only tool (never touched `package.json`, removed after the run) to drive the
+real `server.js` over real HTTP. 34 assertions passed, covering auth (register/OTP/login/
+refresh-rotation/theft-detection/rate-limiting/duplicate-phone), discovery search/sort,
+the full instant-booking path with a real atomic seat decrement, the double-checkout fix,
+decline/fraud-hold outcomes, tiered-refund cancellation, request-to-book, and password
+reset revoking every session.
+**Not built at this point**: group-split/guest pay-link backend (closed below,
+2026-09-03); real payment gateway (still out of scope, confirm with user); KYC review
+endpoints (vendor-side, lands with the vendor module).
 
-**Track 2 — auth foundation**
-1. `User` model: `role` enum (`traveller`/`operator`/`transport`/`property`/`seller`/
-   `influencer`/`admin`), `adminRole` (`super`/`sub`/`finance`, admin only), phone,
-   email, `passwordHash` (bcrypt), `kycStatus`, timestamps.
-2. `middleware/auth.js` (`requireAuth` — verify JWT, attach `req.user`) and
-   `middleware/requireRole.js` — the real server-side enforcer behind the client's
-   existing `RequireAuth`/`RequireRole` guards (§8 item 11), since per §2's own stated
-   law the UI gate is never the security control.
-3. Route stubs for `POST /api/auth/register`, `/login`, `/otp/verify` — return-shape-
-   correct responses first (even hardcoded), real bcrypt/JWT/OTP logic is tomorrow's
-   full build.
+**2026-09-03 — client fetch-swap + group-split backend + traveller module complete.**
+`AuthContext`/`BookingContext` (and dependent screens: Login, Register, Otp, Checkout,
+Awaiting, Cancel, History, TourDetail) swapped to the real endpoints via a new
+`client/src/utils/api.js`.
+Group-split: `models/GroupSplit.js` + routes mounted at `/api/booking/group`, ahead of the
+auth-required `/api/booking` router so a participant with no account can still reach it.
+All-or-nothing for real — the final participant's payment is the one real capture point,
+running the same atomic-deduct + `Booking.create` + `accrueCommission` path as instant
+checkout, not a parallel implementation; a lapsed window settles lazily on read.
+`BookingContext`'s `startGroupSplit`/`payShare`/`lapseGroup` swapped to real endpoints;
+added `fetchGroup` for a participant opening the pay-link on a fresh device.
+**Real bug caught and fixed**: `deductSeat`'s `$gte` seat guard lived only in
+`arrayFilters`, which is not itself a top-level match condition — an already-sold-out
+departure could still match the top-level filter and silently skip the anti-oversell
+check, on **both** checkout paths. Fixed by moving the `$gte` condition into the top-level
+query via `$elemMatch`. Confirmed with a forced race against the main checkout endpoint.
+Verified: 18 new assertions (group-split happy path, no-account pay, idempotent re-pay,
+lapse-with-one-unpaid, pay-into-lapsed-window refused, sold-out race on the final payment)
+plus the full pre-existing 43-assertion suite re-run clean against the `deductSeat` fix.
+**Traveller module (identity + discovery + booking/payment) is 100% of its defined §9
+scope as of this date.** Deliberately still out of scope: a real payment gateway (confirm
+with user before integrating); Discovery's Home/Search browse surface still reads the
+mock `TOURS` catalog for images/copy — booking-critical reads (departures, seats, locking,
+group-split) already go through the real `Tour` collection via a documented `slug` bridge
+in `TourDetail`; re-pointing Home/Search's browsing surface at the live collection is a
+separate, larger frontend change, not a backend gap.
 
-**End-of-day-1 goal**: `npm run dev` boots clean, MongoDB connects, `/api/health` returns
-200, `Policy` is seeded and fetchable, `User` model and auth middleware exist and are
-ready for tomorrow's full identity build (day 2–3 above).
+**Vendor backend (module 04) — started 2026-09-03, ~50% of days 8–9's scope.**
+`models/Subscription.js` + service (full 5-state graph, lazy-timer settlement on read,
+same "check on read, no cron" pattern), plan table in `utils/vendorPlans.js` copied onto
+the Subscription doc at subscribe time. `models/KycDocument.js` + service (per-document
+review, resubmission reuses the same row, 4 fixed rejection reasons enforced
+server-side, aggregate `User.kycStatus` recomputed on every submit/review; admin-gated
+even though the admin console doesn't exist yet). `Tour` extended with `ownerId`/
+`status`/`photos` (previously a bare string with no real Vendor/User link); full listing
+CRUD, photo management, per-departure add/blackout/seat-edit with the booked-seat floor.
+`utils/publishGate.js` ported from the client, now also checking a real plan
+listing-cap. **Per-vendor commission wired into both real capture paths** — the webhook
+service and `operatorDecision` both read the paying vendor's own
+`Subscription.commissionPct` first, falling back to `Policy.commissionPct` only for
+ownerless/legacy tours — closing the "fallback-always" gap flagged in the days-4–7 log.
+`GET /api/vendor/ledger` — the ledger service's first real consumer.
+Verified: 43 assertions covering the full subscription lifecycle, KYC submit→reject→
+resubmit→approve, publish-gate blocking/unblocking correctly per condition (including a
+Starter plan's 3-listing cap), a real traveller booking against a vendor listing
+confirming via the real webhook path, and the vendor's ledger showing the vendor's actual
+plan rate (9% Pro) rather than the Policy default (12%).
+**Not built (remaining, as of the 2026-09-03 pass)**: admin-side payout batches / two-step
+preparer-≠-approver approval (module 09 scope — this module only exposes the vendor's own
+read+reverse view); real file storage for KYC documents/listing photos (`fileRef` is
+still a client-supplied string handle — out of scope for this pass, confirm with user
+before adding one); `VendorContext`'s fetch-swap. Module 05 (transport & property)
+backend — the parallel Dev-B track for these same days — has not been started.
 
-**Track 1 — done, 2026-09-01.** Built the full structure above: `config/env.js` (loads
-`.env`, fails loud if `MONGODB_URI` is missing, warns — doesn't block — if the JWT
-secrets aren't set yet), `config/db.js` (connects, `process.exit(1)` on failure),
-`utils/ApiError.js` + `utils/respond.js` + `middleware/errorHandler.js` (the
-`{ ok:true, data }` / `{ ok:false, error }` envelope, applied to `GET /` and
-`GET /api/health`), `models/Policy.js` (singleton via `getSingleton()`, all 7 admin
-fields + the 2 read-only weather fields, §3's exact ranges as schema `min`/`max`), the
-`routes/index.js` → `routes/admin/config.routes.js` → `controllers/admin/
-config.controller.js` chain (`GET /api/admin/config`), and `seeds/policy.seed.js`
-(`npm run seed:policy`). Old empty root-level `controllers/`/`models/`/`view/` removed
-— superseded by `src/`. **Verified**: every new file passes `node --check` (syntax-clean);
-ran the server against a deliberately unreachable Mongo URI and confirmed it logs the
-failure and exits with code 1 rather than serving requests with no DB (the fail-loud
-path is real, not just written). **Not verified — needs a real `MONGODB_URI`**: no
-MongoDB (local or Atlas) is provisioned in this environment, so the actual connect →
-`Policy.getSingleton()` → `GET /api/admin/config` round-trip hasn't been run end-to-end
-yet. Next step for whoever owns this: copy `server/.env.example` to `server/.env`, fill
-in a real `MONGODB_URI` (Atlas free tier is fine to start), run `npm run seed:policy`
-once to confirm the connection and see the seeded Policy document printed, then
-`npm run dev` and hit `GET /api/health` and `GET /api/admin/config` to confirm both
-return the `{ ok:true, data }` shape. Track 2 (User model + auth middleware + route
-stubs) is still open.
+**Real vendor inbox + analytics endpoints — 2026-09-05.** Closed the two items this
+section had flagged as outstanding for module 04 itself (not module 09's or module 05's
+share): the old `POST /api/booking/:ref/operator-decision` (booking.controller.js) had
+**no ownership check at all** — any signed-in operator could accept/decline any other
+operator's booking request, exactly the "deliberately lightweight stand-in, not the real
+vendor inbox" gap flagged since the days-4–7 log. Replaced it with
+`controllers/vendor/bookings.controller.js`, mounted under the existing
+`requireRole('operator')` vendor router: `GET /api/vendor/bookings[?status=]` and
+`GET /api/vendor/bookings/:ref` (both scoped to `Tour.ownerId === req.user.id` — a
+booking against another vendor's tour 404s, not just hides), and
+`POST /api/vendor/bookings/:ref/decision` (`action: 'accept'|'decline'`, decline
+validated server-side against the same 4 fixed reasons as
+`client/src/context/vendor/vendor-context.js`'s `DECLINE_REASONS`, now mirrored in
+`utils/declineReasons.js`). Guest CNICs are masked server-side (`utils/validators.js`'s
+new `maskCnic`) rather than sent in full and masked only in the client. `Booking` gained
+an `autoDeclined` boolean, set only by the lazy 24h-lapse path
+(`settleIfLapsed`, now exported from `booking.controller.js`) — §6 vendor/booking-detail's
+distinction that a timeout counts against acceptance rate while an explicit decline
+doesn't is real, not just documented: an explicit decline never sets it.
+Added `GET /api/vendor/analytics` (`controllers/vendor/analytics.controller.js`):
+`bookingsCount` (confirmed bookings against the vendor's own tours), `netEarned` (real
+ledger sum, a reversed row counted negative rather than dropped — matching Payouts.jsx's
+own "netted against your next payout" framing), `acceptanceRate` (`accepted / (accepted +
+autoDeclined)`, `null` until at least one exists — never a fake percentage), and `monthly`
+(a real 6-month trailing aggregate of confirmed-booking counts, genuinely computed from
+`Booking`/`Tour.ownerId` now that vendor listings carry a real owner link — sparse in a
+fresh dev database, but real rather than seeded). Traffic-source breakdown is deliberately
+**not** part of this endpoint — no referral/campaign click-tracking backend exists yet
+(that's §9 days 12–13 scope) — so the client's "Where bookings come from" section stays
+seeded/illustrative until that module lands, rather than this endpoint inventing numbers
+it can't back.
+Verified genuinely: a 61-assertion `mongodb-memory-server` run (same throwaway-dependency
+method as every other pass here) covering two separate vendors with their own published
+request-mode tours — vendor B gets a 404 both reading and deciding vendor A's booking;
+masked CNIC on read; a bad decline reason 400s; an explicit decline does not set
+`autoDeclined`; accept deducts the real seat and posts a ledger row at the vendor's own
+plan rate (Pro, 9%) with the correct gross; deciding an already-decided booking 409s; a
+forced-lapsed request auto-declines with `autoDeclined: true`; analytics' acceptance rate
+correctly excludes the explicit decline from both sides of the ratio; a non-operator gets
+403 from the whole `/vendor/bookings` surface; and reversing the ledger row flips
+`netEarned` negative. All 61 passed; the throwaway script and dependency were both removed
+after the run.
+**`VendorContext` fetch-swap, plus closing the request-to-book loop end-to-end —
+2026-09-05.** `VendorContext.jsx` now calls the real endpoints throughout — subscription
+(incl. the plan-id case map, client `starter/growth/pro` <-> server
+`Starter/Growth/Pro`), listing CRUD (`updateListing` is optimistic-local + debounced
+500ms per listing id, accumulating rapid successive field edits rather than dropping all
+but the latest — a per-keystroke PATCH would have spammed the server and let a stale
+response clobber a newer edit), the booking inbox (`fetchInbox`/`acceptBooking`/
+`declineBooking`, replacing `Inbox.jsx`/`BookingDetail.jsx`'s old reads off
+`BookingContext`'s mock `requests`/`acceptRequest`/`declineRequest`), the ledger, and the
+new analytics endpoint. `SEED_LEDGER`'s 4 rows are kept as a permanent local-only
+exception, not removed — `AdminContext`'s fraud/dispute demo resolutions and
+`AiContext`'s weather-cancel demo both call `reverseLedger` against those fixed ids
+(`LG-4002`/`LG-4003`/`LG-4004`), and a freshly-registered real vendor's own ledger starts
+empty, so `reverseLedger`/`fetchLedger` special-case those 4 ids into local-only
+mutations, the same shape `BookingContext`'s own `LEGACY_SEED_REFS` already established.
+Every vendor page that reads `subscription`/`listings`/`ledger`/`inbox`/`analytics` now
+fetches on mount (`useEffect`, matching `History.jsx`'s existing `fetchHistory()`
+convention) rather than assuming the data is already there.
+Wiring the inbox surfaced a real, live gap: `BookingContext.createRequest` (the
+traveller's own "send a request" action, called from `TourDetail.jsx`) was **still the
+old mock** — request-mode bookings were never actually sent to the real
+`POST /api/booking/request` at all, so the real vendor inbox just built would have stayed
+permanently empty in the running app. Closed both ends of this: `TourDetail.jsx` now
+fetches `liveTour` for request-mode tours too (previously skipped outright, request mode
+booked only against a hardcoded mock departure list) and calls the real `createRequest`
+with a real tour/departure id; `BookingContext.createRequest` now POSTs for real and
+returns `{ok, ref, deadlineAt}` instead of mutating a local mock queue.
+`acceptRequest`/`declineRequest` and the `requests` array are removed from
+`BookingContext` entirely — deciding a request is exclusively `VendorContext`'s
+ownership-scoped job now, not something a traveller's own context should be able to do.
+`AwaitingAccept.jsx` (the traveller's own waiting screen) is rewritten from a page that
+let the *traveller* fake-play the vendor's accept/decline buttons (a frontend-phase
+stand-in, labeled "No vendor inbox is built yet (module 04)") into a pure poller —
+`checkBookingStatus(ref)` every second, exactly like the instant-mode `Awaiting.jsx`
+already does — until the server (i.e. the vendor's real decision) resolves it.
+`checkBookingStatus` itself had a real bug for this to work at all: it only recognized
+`status === 'pending'` as "still waiting," but a request-mode booking's in-flight status
+is `'awaiting-accept'` — the old check would have treated an untouched request as already
+terminal-and-failed on the very first poll. Fixed to treat both as pending, and to only
+touch `paymentState` for the payment-flavored terminal states (confirmed/held/failed),
+leaving a plain `'declined'` alone rather than mislabeling it as a payment failure.
+Verified genuinely (not just lint/build): a 31-assertion `mongodb-memory-server` run
+(same throwaway-dependency method as every prior pass) driving the exact HTTP shapes the
+new client code sends — PATCH/DELETE support end to end (listing field patch incl.
+`description`, photo add/delete, departure seat PATCH), publish, and the **full real
+request-to-book loop**: a traveller creates a request against a real departure id
+resolved via `/discover/tours/:id`, the vendor's real inbox shows it pending with an
+already-masked CNIC, the vendor accepts it for real, and the traveller's own status poll
+correctly flips from `awaiting-accept` to `confirmed` and the booking lands in real
+history. Also a clean `eslint` (project-wide) and a clean production `vite build`
+throughout every edit in this pass.
+**Still not built**: the shared `identity/kyc` wizard is still on `AuthContext`'s mock
+`submitKyc`/`setKycStatus`, and `quickSignIn`/`switchRole` not carrying a real token —
+both flagged here, both fixed in the two dated entries right below. Admin payout batches,
+vendor file storage, and module 05 backend remain exactly as the paragraph above left them.
 
-**Track 2 — done, plus the full days 2–7 traveller chain — 2026-09-02.** Finished the
-open Track 2 item (`models/User.js`: 7 roles + `adminRole`, `otp` subdocument, bcrypt
-`passwordHash`, `kycStatus`; `middleware/auth.js` `requireAuth`; `middleware/
-requireRole.js`) and then continued straight through the rest of §9's days 2–7 scope —
-the traveller-first chain this whole plan is sequenced around — rather than stopping at
-the Track-2 boundary, since Track 1 had already cleared the day-1 dependencies it needed.
+**`identity/kyc` wizard wired to the real endpoints — 2026-09-05.** Real document review
+only exists server-side for `operator` (`routes/vendor/index.js` gates the entire
+`/vendor/kyc/documents` surface behind `requireRole('operator')` — `kyc.service.js`'s own
+comment: "Only `operator` is in scope for this module"). Rather than silently 403ing
+`transport`/`property`/`seller` (also `PARTNER_ROLES`, per `auth-context.js`) or ripping
+out their only working KYC flow, `Kyc.jsx`/`KycPending.jsx`/`KycRejected.jsx` branch on
+`user.role === 'operator'`: real for operator, the pre-existing local-mock flow
+unchanged for the others. New `utils/kycDocs.js` holds the client<->server type map
+(`cnicFront`/`cnicBack`/`registration` <-> `cnic_front`/`cnic_back`/
+`business_registration`) and a `REJECTION_LABELS` map for the 4 fixed reason ids, mirroring
+`server/src/models/KycDocument.js`'s enums exactly (§4: "the same rule lives on both
+sides"). `AuthContext.jsx` gained `fetchKycDocuments`/`submitKycDocument`/`refreshUser`
+(the last needed because a document submission or an out-of-band admin decision doesn't
+otherwise touch the locally-cached `user` object — `kycStatus` has to be explicitly
+re-read); `submitKyc`/`setKycStatus` stay exactly as they were, still serving the
+non-operator mock path (and `setKycStatus` is also still admin module 09's own
+"this session's live demo account" convenience in `pages/admin/Kyc.jsx`, untouched).
+`DocumentUpload.jsx` now takes an optional `onUpload` prop — real async submission when
+given (operator), the original simulated timeout when omitted (everyone else) — one
+component, two backing implementations, not a fork. A real per-document `approved` status
+got its own pill (there wasn't one before; every uploaded doc just said "in review"
+forever, even once genuinely approved) — server is the only one that gets to say
+"verified" (§2 law), so `approved` still never unlocks anything the reviewer hasn't
+granted (no "Replace" once a document has cleared).
+One genuine backend gap surfaced and was deliberately **not** papered over: the wizard's
+own "Account" step (business name, operating region) and the owner-CNIC text field have
+nowhere real to persist to at all — `User` has no such fields, and nothing else on the
+server models a vendor's business profile. Wiring those would mean adding new backend
+schema, which is a bigger, separate decision than "wire to the *existing* endpoints" — so
+that step stays exactly the local-draft-only UX it always was (`localStorage`,
+unautosaved to any server), for every role including `operator`, while the Documents step
+underneath it is now fully real. Flagged rather than silently left inconsistent.
+`KycPending.jsx`'s old "preview" buttons (`setKycStatus('approved'/'rejected')`) would
+now be actively dishonest for `operator` — the real `user.kycStatus` persists
+server-side, so faking it locally would visibly "un-fake" itself on the next
+`refreshUser()`/reload. Replaced with real polling every 5s (`refreshUser`, same
+"check on read" shape as every other lazily-settled state in this app), routing to
+approved/rejected the moment a real decision lands; since no admin console UI exists yet
+to actually make that decision from a browser, the copy says so honestly rather than
+offering a working-but-fake shortcut. `KycRejected.jsx`'s reason now comes from the real
+rejected `KycDocument.rejectionReason` (there's no aggregate reason field on `User` at
+all — rejection reasons only ever lived per-document) mapped through the same
+`REJECTION_LABELS`.
+Verified genuinely: a 28-assertion `mongodb-memory-server` run (same throwaway-dependency
+method as every prior pass) — a fresh operator starts at `kycStatus: 'none'` with 0
+documents; submitting all 3 required docs flips the aggregate to `pending`; an admin
+rejecting one with `image_unreadable` flips it to `rejected` and the raw reason maps to
+the client's exact "Image unreadable" label; resubmitting the same document type reuses
+the same document id and clears the rejection back to `pending` (not a new row); approving
+all 3 flips the aggregate to `approved`; and a traveller is correctly 403'd off the entire
+`/vendor/kyc/documents` surface, both reading and submitting — confirming the branch in
+the client is necessary, not just cautious. Clean `eslint` (project-wide) and `vite build`
+throughout.
 
-*Identity (day 2–3 scope):* `POST /api/identity/auth/register|login|otp/verify|otp/resend`,
-`/refresh`, `/logout`, `GET /auth/me`, `POST /identity/password/forgot|reset`. Real bcrypt
-+ JWT access/refresh, 6-digit OTP (5 min TTL, 5 attempts, 15-min lockout) with the
-client's own documented magic code `419027` kept alive as a non-production bypass
-(`utils/otp.js`) so manual testing doesn't need a real SMS/email provider. Refresh-token
-rotation is a real `Session` model keyed by `family`/`jti` — reusing an already-rotated
-token revokes every session on that `family` (§4's "theft" rule), and a password reset
-revokes every session for the user outright. Per-phone login rate limiting
-(`middleware/rateLimiter.js`, in-memory — documented Redis stand-in, same call as the
-lock service below) locks out further attempts on that number for the window, matching
-the same lockout shape as the OTP rule, not just failed-attempt counting.
+**`quickSignIn`/`switchRole` now carry a real token — 2026-09-05.** Both previously
+cleared/never held a real access token at all (pure local-state role labels, §7/§8 item
+12), so "Acting as: operator" via either shortcut sent every vendor request with no
+`Authorization` header — a 401 before the role check even ran. Fixed in
+`AuthContext.jsx`: a new `signInAsRealRole(roleId)` does a genuine register-then-OTP-
+verify (server's documented dev-bypass code `419027`) the first time a role is used, and
+a plain login on every call after that (register correctly replies `DUPLICATE_ACCOUNT`,
+which is the signal to fall back to login) — one fixed real test phone/password per
+self-registerable role (`3009000001`..`3009000006`), so the same demo account is reused
+rather than registering a fresh one on every click. Both `quickSignIn` and `switchRole`
+now call this; `admin` is the one exception left as a local-only mock, since there's no
+self-registration for it (§4 — an admin account is seeded server-side) and no real admin
+endpoints exist yet to need a real token against anyway. Partner roles no longer start
+`kycStatus: 'approved'` for free — silently pre-approving KYC from the client would be
+faking a real admin decision (§3: "the model does not decide, a person decides" — the
+same principle), so a quick-signed-in vendor now walks the real KYC/subscription flow
+from a fresh account like any real vendor would. Each role's real state (KYC,
+subscription, listings, bookings) now persists across "switches" for free, as genuine
+server state, rather than needing the old mock's local kycStatus-preservation logic.
+Both call sites (`Login.jsx`'s quick-sign-in panel, `AppShell`'s "Acting as" select) are
+now async with a brief in-flight state and a visible error on failure — a real network
+round trip replaced what used to be an instant local mutation, so both needed a way to
+show something other than silently doing nothing if the round trip fails.
+Verified genuinely: a 10-assertion `mongodb-memory-server` run (same throwaway-dependency
+method as every other pass) proving the exact sequence — first call registers and gets a
+real `role: 'operator'` JWT; that token actually passes `GET /vendor/listings`
+(`requireRole('operator')`), while a real traveller's own token still correctly 403s on
+the same route (proving this is a real role check, not "any token works"); a second call
+for the same role hits `DUPLICATE_ACCOUNT` and logs in instead, and that session's token
+also passes the gate; and a listing created, then "switched away" from and back to,
+survives untouched — real server state, no client bookkeeping needed. Clean `eslint`
+(project-wide) and `vite build` throughout.
 
-*Discovery (day 4–7 scope):* `models/Tour.js` (embedded `departures` subdocs, each with
-its own `seatsTotal`/`seatsLeft` — not a single flat count), `seeds/tours.seed.data.js` +
-`tours.seed.js` (`npm run seed:tours`) migrating all 10 rows from `client/src/data/
-traveler/tours.js` by hand (that file is an ES module importing `.jpg` assets, so it
-can't be `require()`d directly from `server/`). `GET /api/discover/tours` ports the
-client's exact search/filter/sort logic server-side — price range, region, duration
-buckets, verified-only, has-availability, and the sponsored-slot interleave (2 per 8
-organic, relevance-sort only, stripped on every other sort) — plus `GET /tours/:id` for
-the detail screen.
-
-*Booking/payment (day 4–7 scope, the highest-risk part of the whole plan):*
-`services/lock.service.js` — the soft lock as a Mongo TTL collection (`models/Lock.js`,
-`expireAfterSeconds: 0`), Redis-fallback decision from §9 made explicit rather than
-silently defaulted. `services/payment-gateway.mock.js` + `services/webhook.service.js` —
-a charge goes `pending` immediately, then a signed callback resolves it a few seconds
-later through the *same* `processPaymentWebhook` function whether it's the mock gateway
-delivering in-process or a real `POST /api/webhooks/payment` call, with the deterministic
-test triggers preserved exactly (`4000...0002` decline, `4100...0019` held, wallet ending
-`0000` declined, total ≥ Rs 400,000 held) and the fraud score modeled as the weighted-
-factor breakdown §3 asks for, not a bare number. Atomic seat deduction is
-`findOneAndUpdate` + `arrayFilters` + a `$gte` guard on the specific departure
-subdocument — §3's exact pattern, never read-then-write; a null result is treated as
-sold-out/late-webhook, never oversold. All six outcome branches
-(confirmed/failed/held/sold-out/late-webhook/expired-lock) are real. Cancellation
-(`POST /booking/:ref/cancel`) reads each booking's own snapshotted cancellation-policy
-tier (`utils/cancellationPolicy.js`, ported verbatim from the client), restores the seat,
-and reverses the accrued ledger row. Request-to-book
-(`POST /booking/request` + `POST /booking/:ref/operator-decision`) is the full
-request→accepted/declined lifecycle with the 24h window enforced (lazily, on next read —
-no queue/cron infra exists yet); the operator-decision endpoint is a deliberately
-lightweight stand-in for the real vendor inbox (§9 days 8–9), scoped only so the
-traveller-facing request flow has somewhere real to resolve to. `services/
-ledger.service.js` (`accrueCommission`/`reverseLedger`) is the one shared implementation
-§3 asks for — booking confirm and operator-accept both call it, reading
-`Policy.commissionPct` as the fallback rate until the real per-vendor rate exists
-(vendor module, not yet built).
-
-One correctness fix worth flagging explicitly: the first draft kept a booking's `Lock`
-alive until its webhook resolved (to detect a late-arriving confirmation), which left a
-window where checkout could be double-submitted against the same lock before the webhook
-returned — two Bookings/Payments off one hold. Fixed by snapshotting `lockExpiresAt` onto
-the `Booking` at checkout and releasing the `Lock` immediately; the webhook now reads that
-snapshot instead of a live Lock doc, and a second checkout on an already-consumed
-`lockId` correctly 404s. Caught and fixed before verification, not after.
-
-**Verified — genuinely, not just syntax-checked.** No MongoDB was available in this
-environment either (same gap Track 1 hit), so `mongodb-memory-server` was installed as a
-throwaway dev-only tool (`npm install --no-save`, never touched `package.json` — confirm
-`git status`/`git diff` show no dependency changes if picking this up) to boot a real
-in-memory MongoDB and drive the actual `server.js` over real HTTP. A 34-assertion run
-covered: register → OTP verify (including the wrong-code and magic-bypass paths) → login
-→ refresh rotation → reuse-detected-as-theft → the whole family dying with it; per-phone
-rate limiting actually locking out further attempts; duplicate-phone registration
-rejected without confirming which field matched; tour search/filter/sort including the
-sponsored interleave and its stripping on non-relevance sorts; the full instant-booking
-hold→checkout→webhook→confirmed path with a real atomic seat decrement; the double-
-checkout-on-one-lock fix; both deterministic decline and fraud-hold outcomes; tiered-
-refund cancellation with the seat returned and the ledger row flipped to `reversed`; the
-full request-to-book → operator-accept → confirmed path; and password reset revoking
-every prior session, operator included. All 34 passed. The throwaway test script and the
-`mongodb-memory-server` dependency were both removed after the run — this environment is
-back to having no MongoDB, exactly as Track 1 left it; whoever provisions a real
-`MONGODB_URI` should expect the same behavior this run just proved, not re-derive it from
-scratch.
-
-**Not built yet (the traveller module's remaining ~20%, called out explicitly rather than
-silently implied to work):** group-split / shared guest pay-link (§3's all-or-nothing
-group booking) has no backend yet — `BookingContext`'s mock version is still the only
-implementation. A real payment gateway is still out of scope per §9's own note (confirm
-with the user before integrating one). KYC review endpoints are vendor-side, not
-traveller-side, and land with the vendor module (days 8–9) as originally planned. The
-operator-decision endpoint above is intentionally minimal, not the real vendor inbox.
-
-**Client fetch-swap for identity + booking — 2026-09-03.** `AuthContext` and
-`BookingContext` (plus their dependent screens: Login, Register, Otp, Checkout, Awaiting,
-Cancel, History, TourDetail) are now wired to the real endpoints above via a new
-`client/src/utils/api.js` — the §9 rule-2 step flagged as outstanding above is done for
-these two contexts specifically. Discovery's own context/data source swap and the
-group-split gap noted above are unaffected and still open.
-
-**Traveller module (module 1: identity + discovery + booking/payment) — 100% of its
-defined §9 scope, 2026-09-03.** The one remaining concrete backend gap called out above —
-group-split / the shared guest pay-link — is now real:
-- `models/GroupSplit.js` + `controllers/booking/group.controller.js` +
-  `routes/booking/group.routes.js` (mounted at `/api/booking/group`, ahead of the
-  `requireAuth`-blanketed `/api/booking` router so a participant with no account can
-  still reach it — §3's own requirement). Starting a split needs a signed-in organizer;
-  reading a split's status and paying a share are both public, exactly mirroring the
-  client's pre-existing "no account needed" pay-link design.
-- All-or-nothing, for real: no seat is touched and no Booking exists until every
-  participant has paid. The **final** participant's payment is the one real capture
-  point — it runs the same atomic `deductSeat` + `Booking.create` + `ledgerService.
-  accrueCommission` (with the same per-vendor-rate lookup the vendor module wired in)
-  as the instant-checkout webhook path, not a parallel implementation. A lapsed window
-  (deadline elapsed with anyone still unpaid) is settled lazily on read, same "check on
-  read, no cron infra" pattern as booking's own `settleIfLapsed` and the subscription
-  service's timers.
-- `BookingContext`'s `startGroupSplit`/`payShare`/`lapseGroup` are swapped to the real
-  endpoints (the §9 rule-2 step this flow was still missing), plus a new `fetchGroup` —
-  needed because a participant may open the pay-link on a fresh browser/device with
-  nothing in local context state at all; `Participant.jsx` now fetches the real group
-  directly on mount rather than assuming the organizer's own session already has it
-  cached. `GroupSplit.jsx`/`TourDetail.jsx` were updated to pass a real Mongo tour/
-  departure id into the split (previously the mock catalog id, which the real backend
-  can't resolve).
-- **A real correctness bug was caught and fixed while testing this**, not an
-  aspirational note: `webhook.service.js`'s `deductSeat` — the exact §3 atomic
-  anti-oversell update, in place since the days 4-7 pass — had its `$gte` seat guard
-  living only in `arrayFilters`, which is not itself a match condition on the document.
-  A departure already below the requested seat count still matched the top-level
-  `{ _id: tourId }` filter, so `findOneAndUpdate` returned the (unchanged) document
-  instead of `null` — the "never oversell" guarantee was silently not enforced for a
-  real race on **either** caller (instant checkout and the new group-split path). Fixed
-  by moving the `$gte` condition into the top-level query via `$elemMatch`, so the whole
-  query now correctly fails to match (returns `null`) when the departure doesn't have
-  enough seats. Confirmed with a forced two-tab-style race directly against the main
-  checkout endpoint (seat count zeroed out mid-flight) — the booking now correctly
-  resolves `failed`/`sold-out` instead of wrongly confirming.
-- **Verified — genuinely.** An 18-assertion `mongodb-memory-server` run (same
-  throwaway-dependency method as every other module here) covering: the full happy path
-  (3 participants, real seat deduction, real ledger row); paying with no account/token;
-  idempotent re-pay of an already-paid or already-confirmed share; a window lapsing with
-  one unpaid (seats never touched); paying into a lapsed window refused; a genuine
-  sold-out race on the final payment lapsing the group instead of overselling; wrong-
-  booking-mode and too-few-participants guards. All 18 passed, plus the full pre-existing
-  43-assertion vendor-module suite re-run clean against the `deductSeat` fix (no
-  regression) and a standalone forced-race check against the main checkout path.
-
-**What still isn't in scope for "100%" here, by design, not oversight:** a real payment
-gateway (Stripe/JazzCash/etc.) remains explicitly out of scope for this backend pass —
-confirm with the user before integrating one, per §9's own original note; this is the
-same "Turning on real payments" item the weekly report already tracks separately under
-What's Next, not a gap in this module's own defined completion bar. Discovery's Home/
-Search screens still read the pre-existing mock `TOURS` catalog for browsing (images,
-copy, itinerary) rather than the real `Tour` collection directly — a deliberate,
-already-documented bridge (`TourDetail`'s own comment: "Bridges this pre-existing mock
-catalog entry to its real backend Tour document via `slug`") that every booking-critical
-read (live departures, seat counts, locking, group-split) already goes through for real;
-fully re-pointing Home/Search's browsing surface at the live collection is a separate,
-larger frontend-architecture change, not a backend gap, and is deliberately not bundled
-into this pass.
-
-**Vendor backend (module 04) — started 2026-09-03, ~50% of §9 days 8–9's scope.** Built
-directly against the real live KYC/subscription state (CLAUDE.md §2 law: "the server is
-the truth"), not a stub:
-- `models/Subscription.js` + `services/subscription.service.js` — the full 5-state graph
-  (§3), lazy-timer settlement on read (grace→suspended after 3 days, suspended→cancelled
-  after 90, cancelled→purged after 90 — same "check on read, no cron infra" pattern as
-  booking's `settleIfLapsed`), plan table in `utils/vendorPlans.js` (Starter/Growth/Pro,
-  §3's exact price/cap/commission numbers) copied onto the Subscription doc at subscribe
-  time rather than re-read live, and the same honestly-labeled manual test levers the
-  client already has (`simulate-charge-failure`, `retry`, `exhaust-retries`).
-- `models/KycDocument.js` + `services/kyc.service.js` — per-document `pending→approved|
-  rejected`, resubmission reuses the same (vendor, type) row rather than creating a new
-  one, the 4 fixed rejection reasons enforced server-side, and the vendor's aggregate
-  `User.kycStatus` recomputed from the tour-operator required set (CNIC front/back +
-  business registration) every time a document is submitted or reviewed. Review is
-  admin-gated (`requireRole('admin')`) even though the admin console itself (module 09)
-  doesn't exist yet — same "build the service ahead of its future UI" precedent the
-  ledger service already set.
-- `Tour` model extended with `ownerId`, `status`, and `photos` (previously `operator` was
-  a bare string with "no real Vendor/User link" — that gap is now closed for
-  vendor-created listings; legacy/seeded tours keep `ownerId: null` and are unaffected).
-  Full listing CRUD, photo add/remove/set-cover, and per-departure add/blackout-toggle/
-  seat-edit (hard floor at already-booked seats, §6 vendor/availability) all live under
-  `/api/vendor/listings`.
-- `utils/publishGate.js` — the exact blocker list/copy ported from
-  `VendorContext.jsx`'s `publishGate`, now also checking a real plan listing-cap (a
-  blocker the client version didn't have live data for) alongside KYC/subscription/
-  photos/price/departures.
-- **Per-vendor commission now wired into both real capture paths** — `webhook.service.js`
-  and `booking.controller.js`'s `operatorDecision` both read the paying vendor's own
-  `Subscription.commissionPct` first, falling back to `Policy.commissionPct` only for
-  ownerless (legacy) tours or a vendor with no active/grace subscription. This was called
-  out as explicit follow-up debt in the days-4–7 log above ("reading `Policy.commissionPct`
-  as the fallback rate until the real per-vendor rate exists") — it's now real, not a
-  fallback-always situation. §3's "Commission is plan-driven, not a single global rate"
-  is genuinely true end-to-end for the traveller-booking path.
-- `GET /api/vendor/ledger` — the vendor's own filtered view over the shared `LedgerRow`
-  collection (matched on the vendor's display name, the same string `ledger.service.js`
-  already writes as `party`) plus a vendor-scoped reverse action. This is the ledger
-  service's first real consumer, as §9 anticipated.
-
-**Verified — genuinely, not just syntax-checked**, same method as the days 2–7 pass:
-`mongodb-memory-server` installed as a throwaway dev-only tool (never touched
-`package.json`, removed after the run), driving the real `server.js` over real HTTP. A
-43-assertion run covered: the full subscription lifecycle including all 3 clock-driven
-manual levers; KYC submit → wrong-reason rejection refused → rejection with a fixed
-reason → aggregate status flipping to `rejected` → resubmission reusing the same document
-slot (not a 4th row) → approval of all 3 → aggregate status `approved`; a non-admin
-blocked from reviewing KYC; publish correctly blocked with the right blocker count before
-KYC/photos/price/departures are satisfied, and correctly *not* blocked by a `grace`-state
-subscription; publish succeeding once every condition is met; the new listing appearing
-in real Discovery search with a live seat count; a full real traveller booking against
-that listing confirming via the real webhook path; the vendor's ledger showing exactly
-one row at the vendor's actual Pro-plan rate (9%) rather than the Policy default (12%) —
-proving the commission-rate wiring, not just its presence; the departure seat-floor
-refusing to drop below an already-booked seat and accepting above it; a blacked-out
-departure disappearing from Discovery's seat count; a ledger row reversing; and a Starter
-plan's 3-listing cap blocking a 4th publish with the correct blocker while the first 3
-succeed. All 43 passed.
-
-**Not built yet (the remaining ~50% of module 04, called out explicitly):** the admin
-side of payouts (batch creation, the two-step preparer-≠-approver approval, §3) — this
-module only exposes the vendor's own read+reverse view, not the batch mechanism itself,
-which is admin console (module 09) scope. Vendor analytics/KPI endpoints. Real file
-storage for KYC documents and listing photos — `fileRef` is currently just a
-client-supplied string handle, no upload/storage service exists yet (out of scope for
-this pass, same as the "no real payment gateway" note above — confirm with the user
-before adding one). `VendorContext`'s mock actions have not been swapped for real
-`fetch()` calls yet — that's the same explicit, separate step §9 rule 2 calls for,
-verified in-browser per module, not assumed from the backend being real. Module 05
-(transport & property) — the parallel Dev-B track for these same two days — hasn't been
-started; it shares no code with module 04 beyond the same lead-lifecycle shape already
-documented in §3.
+**Admin KYC queue wired to real `operator` applications — 2026-09-05.** The vendor's own
+KYC wizard (previous entry) had a real per-document submit/list endpoint but no way for
+an admin to see WHAT to review — `GET /api/vendor/kyc/documents` is vendor-scoped (one
+signed-in vendor's own docs), and the only admin-facing route was `POST .../:id/review`,
+a blind "decide by id" action with nothing upstream to list ids from. Added
+`GET /api/vendor/kyc/documents/queue` (admin-only, mounted alongside the existing review
+route ahead of the blanket `requireRole('operator')` gate): `kyc.service.js`'s new
+`listQueue()` groups every `KycDocument` by vendor (a reviewer decides per document, §3,
+but browses per vendor application) and joins each group to its vendor's name/role/real
+`kycStatus`. `AdminContext.jsx` gained `fetchKycQueue`/`reviewKycDocument`, merging real
+rows (tagged `real: true`) over the **permanent** seeded `KYC_QUEUE` rows — same "seed
+stays, real merges in" shape as `VendorContext.SEED_LEDGER`/`BookingContext.
+LEGACY_SEED_REFS` — since transport/property/seller vendor types still have no real KYC
+backend to replace their demo rows with (only `operator` does, per the previous entry's
+own note). `pages/admin/Kyc.jsx` branches per row: a seeded row keeps its exact original
+one-button-per-vendor Approve/Reject-with-one-reason UI; a real row's Documents column now
+shows each document with its own status and, if still pending, its own Approve/Reject
+(one of the same 4 fixed reasons, mirrored via `utils/kycDocs.js`'s `REJECTION_LABELS` —
+new `DOC_TYPE_LABEL` map added alongside it for display) — the real per-document
+granularity the mock's flat per-vendor row never modeled, since the seeded demo data
+predates the real backend's exact shape.
+Verified genuinely: a 23-assertion `mongodb-memory-server` run (same throwaway-dependency
+method as every prior pass) — the queue is empty before anyone submits; submitting
+partially groups correctly into one row with all of that vendor's documents, and a second
+vendor's later submission appears as a genuinely separate row without disturbing the
+first; rejecting one specific document flips only that document (and the vendor's
+aggregate status) while the vendor's other two documents stay untouched — proving
+per-document, not per-application, granularity; a resubmit-then-approve-everything cycle
+flips the aggregate to `approved`, visible both in the queue and on the vendor's own
+`/identity/auth/me`; and neither the vendor themselves nor a traveller can read the queue
+(403), confirming it's genuinely admin-only. Clean `eslint` (project-wide) and `vite
+build` throughout.
 
 ---
 

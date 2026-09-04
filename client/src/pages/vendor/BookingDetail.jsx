@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/app/useApp';
-import { useBooking } from '../../context/booking/useBooking';
+import { useVendor } from '../../context/vendor/useVendor';
 import { DECLINE_REASONS } from '../../context/vendor/vendor-context';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -9,22 +9,27 @@ import SelectField from '../../components/ui/SelectField';
 import StatusPill from '../../components/ui/StatusPill';
 import Countdown from '../../components/ui/Countdown';
 import EmptyState from '../../components/ui/EmptyState';
-import { REQUEST_WINDOW_HOURS } from '../../context/booking/booking-context';
 
-function maskCnic(cnic) {
-  const m = /^(\d{5})-(\d{7})-(\d)$/.exec(cnic);
-  if (!m) return cnic;
-  return `${m[1]}-•••••••-${m[3]}`;
+// Real remaining time to the 24h window's actual deadline — see Inbox.jsx's
+// identical helper (§6 vendor/inbox + booking detail: the clock is real).
+function remainingSeconds(deadlineAt) {
+  return Math.max(0, Math.round((new Date(deadlineAt).getTime() - Date.now()) / 1000));
 }
 
 export default function BookingDetail() {
   const location = useLocation();
   const navigate = useNavigate();
   const { formatMoney } = useApp();
-  const { requests, acceptRequest, declineRequest } = useBooking();
+  const { inbox, fetchInbox, acceptBooking, declineBooking } = useVendor();
   const [reason, setReason] = useState('');
 
-  const req = requests.find((r) => r.id === location.state?.requestId);
+  useEffect(() => {
+    fetchInbox(); // covers a direct navigation/reload, not just arriving from Inbox.jsx
+    // Runs once on mount — fetchInbox is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const req = inbox.find((r) => r.id === location.state?.requestId);
 
   if (!req) {
     return (
@@ -32,15 +37,15 @@ export default function BookingDetail() {
     );
   }
 
-  const onAccept = () => {
-    acceptRequest(req.id);
-    navigate('/vendor/inbox');
+  const onAccept = async () => {
+    const res = await acceptBooking(req.id);
+    if (res.ok) navigate('/vendor/inbox');
   };
 
-  const onDecline = () => {
+  const onDecline = async () => {
     if (!reason) return;
-    declineRequest(req.id, DECLINE_REASONS.find((r) => r.id === reason).label);
-    navigate('/vendor/inbox');
+    const res = await declineBooking(req.id, reason);
+    if (res.ok) navigate('/vendor/inbox');
   };
 
   return (
@@ -52,7 +57,7 @@ export default function BookingDetail() {
 
       {req.status === 'pending' && (
         <div className="flex items-center gap-2 rounded-xl border border-warning bg-warning-soft px-4 py-3 text-sm text-warning-text">
-          Time to answer <Countdown seconds={REQUEST_WINDOW_HOURS * 3600} urgentAt={21600} />
+          Time to answer <Countdown key={req.id} seconds={remainingSeconds(req.deadlineAt)} urgentAt={21600} />
         </div>
       )}
 
@@ -64,7 +69,9 @@ export default function BookingDetail() {
           {(req.guests || []).map((g, i) => (
             <div key={i} className="flex justify-between py-1 text-sm">
               <span>{g.name}</span>
-              <span dir="ltr" className="font-mono text-fg-muted">{maskCnic(g.cnic)}</span>
+              {/* CNIC arrives already masked from the server (§6: "Masked CNIC
+                  display") — never sent in full over the wire in the first place. */}
+              <span dir="ltr" className="font-mono text-fg-muted">{g.cnic}</span>
             </div>
           ))}
         </div>

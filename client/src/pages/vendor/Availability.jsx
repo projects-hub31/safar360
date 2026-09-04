@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useVendor } from '../../context/vendor/useVendor';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -7,11 +7,17 @@ import SelectField from '../../components/ui/SelectField';
 import EmptyState from '../../components/ui/EmptyState';
 
 export default function Availability() {
-  const { listings, addDeparture, setDepartureSeats, toggleBlackout } = useVendor();
+  const { listings, fetchListings, addDeparture, setDepartureSeats, toggleBlackout } = useVendor();
   const [listingId, setListingId] = useState(listings[0]?.id || null);
   const [date, setDate] = useState('');
   const [seats, setSeats] = useState(10);
   const [floorNote, setFloorNote] = useState(null);
+
+  useEffect(() => {
+    fetchListings();
+    // Runs once on mount — fetchListings is stable (useCallback, no deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!listings.length) {
     return (
@@ -32,8 +38,8 @@ export default function Availability() {
     setDate('');
   };
 
-  const onSetSeats = (depId, value) => {
-    const result = setDepartureSeats(listing.id, depId, Number(value));
+  const onSetSeats = async (depId, value) => {
+    const result = await setDepartureSeats(listing.id, depId, Number(value));
     if (!result.ok) {
       setFloorNote({ depId, floor: result.floor });
       setTimeout(() => setFloorNote(null), 4000);

@@ -41,6 +41,11 @@ const bookingSchema = new mongoose.Schema(
     },
     requestState: { type: String, enum: ["pending", "accepted", "declined"] },
     requestDeadline: Date,
+    // Set true only when the 24h window lapsed with no operator reply
+    // (settleIfLapsed). §6 vendor/booking-detail: a timeout counts against
+    // acceptance rate, an explicit decline with a chosen reason doesn't —
+    // this is the field that distinction is computed from.
+    autoDeclined: { type: Boolean, default: false },
 
     outcomeReason: String, // human copy for failed/held/sold-out/late-webhook/declined
     // paymentState/status alone can't tell a plain decline apart from

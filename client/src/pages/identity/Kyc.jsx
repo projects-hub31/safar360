@@ -8,6 +8,7 @@ import SelectField from '../../components/ui/SelectField';
 import ChoiceCard from '../../components/ui/ChoiceCard';
 import DocumentUpload from '../../components/identity/DocumentUpload';
 import { CNIC_ERROR, isValidCnic } from '../../utils/validators';
+import { DOC_TYPE, mapDocsToSlots, mapOneDocToSlot } from '../../utils/kycDocs';
 
 const STEPS = ['Account', 'Documents', 'Plan'];
 const DRAFT_KEY = 's360-kyc-draft';
@@ -26,6 +27,7 @@ const PLANS = [
 ];
 
 const EMPTY_DOC = { status: 'empty', filename: null, reason: null };
+const EMPTY_DOCS = { cnicFront: EMPTY_DOC, cnicBack: EMPTY_DOC, registration: EMPTY_DOC };
 
 function readDraft() {
   try {
@@ -36,9 +38,14 @@ function readDraft() {
   }
 }
 
+// Real document review only exists for `operator` (utils/kycDocs.js's own
+// note — the server gates the whole /vendor/kyc/documents surface behind
+// requireRole('operator')). transport/property/seller keep the pre-existing
+// local-mock flow below rather than silently 403ing.
 export default function Kyc() {
   const navigate = useNavigate();
-  const { submitKyc } = useAuth();
+  const { user, submitKyc, fetchKycDocuments, submitKycDocument, refreshUser } = useAuth();
+  const isOperator = user?.role === 'operator';
 
   const draft = readDraft();
   const [step, setStep] = useState(0);
@@ -46,17 +53,29 @@ export default function Kyc() {
   const [region, setRegion] = useState(draft?.region || REGIONS[0].value);
   const [cnic, setCnic] = useState(draft?.cnic || '');
   const [cnicTouched, setCnicTouched] = useState(false);
-  const [docs, setDocs] = useState(
-    draft?.docs || { cnicFront: EMPTY_DOC, cnicBack: EMPTY_DOC, registration: EMPTY_DOC },
-  );
+  const [docs, setDocs] = useState(draft?.docs || EMPTY_DOCS);
   const [plan, setPlan] = useState(draft?.plan || 'starter');
 
+  // A returning operator resubmitting one rejected document must see their
+  // other two already-submitted docs, not a blank wizard (§3: "resubmission
+  // is scoped per rejected document, not a full re-upload") — real state
+  // always wins over whatever's in the local draft.
+  useEffect(() => {
+    if (!isOperator) return undefined;
+    let cancelled = false;
+    fetchKycDocuments().then((res) => {
+      if (!cancelled && res.ok) setDocs(mapDocsToSlots(res.documents));
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Autosave per step (§6 kyc) — a dropped connection must not lose typing.
-  // `snapshot` is a pure derivation of the form state; `saveNote` below reads
-  // it directly rather than via a separate piece of state, so the effect's
-  // only job is the actual side effect (debounced persistence) and its only
-  // setState call happens inside the timer callback, not the effect body.
-  const snapshot = JSON.stringify({ businessName, region, cnic, docs, plan });
+  // Real documents autosave themselves the moment each one is submitted (the
+  // server, not localStorage), so only account-detail fields need a local
+  // draft for `operator`; the pre-existing mock flow still drafts everything
+  // for the roles with no real backend to submit to.
+  const snapshot = JSON.stringify(isOperator ? { businessName, region, cnic } : { businessName, region, cnic, docs, plan });
   const [savedSnapshot, setSavedSnapshot] = useState(snapshot);
 
   useEffect(() => {
@@ -83,14 +102,27 @@ export default function Kyc() {
     true,
   ];
 
-  const onSubmit = () => {
-    submitKyc({ businessName, region, cnic, docs, plan });
+  // Real submission happens per document, the moment each is chosen
+  // (DocumentUpload's onUpload below) — this only picks up the aggregate
+  // kycStatus the server already recomputed, and clears the local draft.
+  const onSubmit = async () => {
+    if (isOperator) {
+      await refreshUser();
+    } else {
+      submitKyc({ businessName, region, cnic, docs, plan });
+    }
     try {
       localStorage.removeItem(DRAFT_KEY);
     } catch {
       /* storage unavailable */
     }
     navigate('/identity/kyc-pending');
+  };
+
+  const uploadDoc = async (clientKey, file) => {
+    const res = await submitKycDocument(DOC_TYPE[clientKey], file.name);
+    if (!res.ok) return { ok: false, message: res.message };
+    return { ok: true, slot: mapOneDocToSlot(res.document) };
   };
 
   return (
@@ -148,18 +180,21 @@ export default function Kyc() {
               constraint="JPG or PDF, up to 5 MB"
               value={docs.cnicFront}
               onChange={(v) => setDocs((d) => ({ ...d, cnicFront: v }))}
+              onUpload={isOperator ? (file) => uploadDoc('cnicFront', file) : undefined}
             />
             <DocumentUpload
               label="CNIC — back"
               constraint="JPG or PDF, up to 5 MB"
               value={docs.cnicBack}
               onChange={(v) => setDocs((d) => ({ ...d, cnicBack: v }))}
+              onUpload={isOperator ? (file) => uploadDoc('cnicBack', file) : undefined}
             />
             <DocumentUpload
               label="Business registration certificate"
               constraint="JPG or PDF, up to 5 MB"
               value={docs.registration}
               onChange={(v) => setDocs((d) => ({ ...d, registration: v }))}
+              onUpload={isOperator ? (file) => uploadDoc('registration', file) : undefined}
             />
           </>
         )}

@@ -32,16 +32,14 @@ function TourDetailView({ id }) {
 
   // Bridges this pre-existing mock catalog entry to its real backend Tour
   // document via `slug` (server/src/models/Tour.js's own field for exactly
-  // this) — an instant-mode booking needs a real tour/departure id to hold
-  // against; a request-mode booking stays on the pre-existing mock path
-  // below (no vendor-inbox backend exists yet to resolve a real request
-  // against, CLAUDE.md §9), so it never reads `liveTour` at all.
+  // this) — both an instant-mode hold and a request-to-book need a real
+  // tour/departure id to act against now that the vendor inbox is real too
+  // (controllers/vendor/bookings.controller.js).
   const [liveTour, setLiveTour] = useState(null);
   const [lockError, setLockError] = useState(null);
   const [locking, setLocking] = useState(false);
 
   useEffect(() => {
-    if (tour.bookingMode === 'request') return undefined;
     let cancelled = false;
     api.get(`/discover/tours/slug/${tour.id}`).then((res) => {
       if (!cancelled && res.ok) setLiveTour(res.data);
@@ -67,7 +65,7 @@ function TourDetailView({ id }) {
     note: d.note || '',
     seats: d.seatsLeft,
   })) || null;
-  const departures = tour.bookingMode !== 'request' && liveDepartures ? liveDepartures : mockDepartures;
+  const departures = liveDepartures || mockDepartures;
 
   const [departure, setDeparture] = useState(0);
   const [guests, setGuests] = useState(2);
@@ -100,9 +98,23 @@ function TourDetailView({ id }) {
 
   const onBook = async () => {
     if (tour.bookingMode === 'request') {
-      if (!requestGuestsValid) return;
-      createRequest({ tourId: tour.id, title: tour.title, price: tour.price, seats: guests, guests: requestGuests });
-      navigate('/booking/awaiting-accept');
+      if (!requestGuestsValid || !liveTour || !chosen.id) return;
+      setLockError(null);
+      setLocking(true);
+      const result = await createRequest({
+        tourId: liveTour.id, departureId: chosen.id, seats: guests, guests: requestGuests,
+      });
+      setLocking(false);
+      if (!result.ok) {
+        setLockError(result.message || 'Could not send this request. Try again.');
+        return;
+      }
+      navigate('/booking/awaiting-accept', {
+        state: {
+          ref: result.ref, deadlineAt: result.deadlineAt, title: tour.title,
+          seats: guests, pricePerSeat: tour.price, tourId: tour.id,
+        },
+      });
       return;
     }
     if (!liveTour || !chosen.id) return;
@@ -268,18 +280,18 @@ function TourDetailView({ id }) {
 
             <Button
               onClick={onBook}
-              disabled={soldOut || locking || (tour.bookingMode === 'request' ? !requestGuestsValid : !liveTour)}
+              disabled={soldOut || locking || !liveTour || (tour.bookingMode === 'request' && !requestGuestsValid)}
               size="lg"
               fullWidth
             >
               {soldOut
                 ? 'Sold out on this date'
-                : tour.bookingMode === 'request'
-                  ? `Request ${guests} ${guests === 1 ? 'seat' : 'seats'} — operator has 24h`
-                  : locking
-                    ? 'Holding your seats…'
-                    : !liveTour
-                      ? 'Loading live availability…'
+                : locking
+                  ? (tour.bookingMode === 'request' ? 'Sending your request…' : 'Holding your seats…')
+                  : !liveTour
+                    ? 'Loading live availability…'
+                    : tour.bookingMode === 'request'
+                      ? `Request ${guests} ${guests === 1 ? 'seat' : 'seats'} — operator has 24h`
                       : `Hold ${guests} ${guests === 1 ? 'seat' : 'seats'} for 10 minutes`}
             </Button>
             {lockError && <p role="alert" className="text-xs leading-relaxed text-danger-text">{lockError}</p>}
